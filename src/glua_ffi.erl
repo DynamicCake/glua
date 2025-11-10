@@ -1,5 +1,5 @@
 -module(glua_ffi).
--export([load/2, load_file/2, eval/2, eval_chunk/2, eval_file/2]).
+-export([load/2, load_file/2, eval/2, eval_chunk/2, eval_file/2, call_function/3]).
 
 %% helper to convert luerl return values to a format
 %% that is more suitable for use in Gleam code
@@ -25,3 +25,6 @@ eval_chunk(Lua, Chunk) ->
 
 eval_file(Lua, Path) ->
   to_gleam(luerl:dofile(unicode:characters_to_list(Path), Lua)).
+
+call_function(Lua, Fun, Args) ->
+  to_gleam(luerl:call(Fun, Args, Lua)).

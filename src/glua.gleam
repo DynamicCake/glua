@@ -124,6 +124,47 @@ fn do_eval_file(
   path: String,
 ) -> Result(#(List(Dynamic), Lua), Dynamic)
 
+/// Calls a Lua function by reference.
+///
+/// ## Examples
+/// ```gleam
+/// let assert Ok(#(fun, lua)) = glua.eval(glua.new(), "return math.sqrt")
+/// let assert Ok(#([result], _)) = glua.call_function(lua, fun, [49])
+/// let decoded = decode.run(result, decode.int)
+/// assert decoded == Ok(49)
+/// ```
+///
+/// ```gleam
+/// let code = "function fib(n)
+///   if n <= 1 then
+///     return n
+///   else
+///     return fib(n - 1) + fib(n - 2)
+///   end
+///end
+///
+///return fib
+///"
+/// let assert Ok(#(fun, lua)) = glua.eval(glua.new(), code)
+/// let assert Ok(#([result], _)) = glua.call_function(lua, fun, [10])
+/// let decoded = decode.run(result, decode.int)
+/// assert decoded == Ok(55)
+/// ```
+pub fn call_function(
+  lua lua: Lua,
+  fun fun: Dynamic,
+  args args: List(a),
+) -> Result(#(List(Dynamic), Lua), LuaError) {
+  do_call_function(lua, fun, args) |> result.map_error(parse_lua_error)
+}
+
+@external(erlang, "glua_ffi", "call_function")
+fn do_call_function(
+  lua: Lua,
+  fun: Dynamic,
+  args: List(a),
+) -> Result(#(List(Dynamic), Lua), Dynamic)
+
 // TODO: Actual error parsing
 fn parse_lua_error(_err: Dynamic) -> LuaError {
   UnknownError

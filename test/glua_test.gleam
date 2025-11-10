@@ -39,3 +39,17 @@ pub fn eval_file_test() {
   assert decode.run(result, decode.string)
     == Ok("LUA IS AN EMBEDDABLE LANGUAGE")
 }
+
+pub fn call_function_test() {
+  let assert Ok(#([fun], lua)) = glua.eval(glua.new(), "return string.reverse")
+  let assert Ok(#([result], _)) = glua.call_function(lua, fun, ["auL"])
+  assert decode.run(result, decode.string) == Ok("Lua")
+
+  let assert Ok(#([fun], lua)) =
+    glua.eval(glua.new(), "return function(a, b) return a .. b end")
+
+  let assert Ok(#([result], _)) =
+    glua.call_function(lua, fun, ["Lua in ", "Gleam"])
+
+  assert decode.run(result, decode.string) == Ok("Lua in Gleam")
+}
