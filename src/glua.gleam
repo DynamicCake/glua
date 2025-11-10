@@ -22,6 +22,32 @@ pub type Function
 @external(erlang, "luerl", "init")
 pub fn new() -> Lua
 
+/// Parses a string of Lua code and returns it as a compiled chunk.
+///
+/// To eval the returned chunk, use `glua.eval_chunk`.
+pub fn load(lua lua: Lua, code code: String) -> Result(#(Chunk, Lua), LuaError) {
+  do_load(lua, code) |> result.map_error(parse_lua_error)
+}
+
+@external(erlang, "glua_ffi", "load")
+fn do_load(lua lua: Lua, code code: String) -> Result(#(Chunk, Lua), Dynamic)
+
+/// Parses a Lua source file and returns it as a compiled chunk.
+///
+/// To eval the returned chunk, use `glua.eval_chunk`.
+pub fn load_file(
+  lua lua: Lua,
+  code code: String,
+) -> Result(#(Chunk, Lua), LuaError) {
+  do_load_file(lua, code) |> result.map_error(parse_lua_error)
+}
+
+@external(erlang, "glua_ffi", "load_file")
+fn do_load_file(
+  lua lua: Lua,
+  code code: String,
+) -> Result(#(Chunk, Lua), Dynamic)
+
 /// Evaluates a string of Lua code.
 ///
 /// ## Examples
@@ -40,6 +66,10 @@ pub fn new() -> Lua
 /// eval(new(), "return 1 * ")
 /// // -> Error(SyntaxError)
 /// ```
+/// Note: If you are evaluating the same piece of code multiple times,
+/// instead of calling `glua.eval` repeatly it is recommended to first convert
+/// the code to a chunk by passing it to `glua.load`, and then
+/// evaluate that chunk using `glua.eval_chunk`
 pub fn eval(
   lua lua: Lua,
   code code: String,
@@ -51,6 +81,27 @@ pub fn eval(
 fn do_eval(
   lua lua: Lua,
   code code: String,
+) -> Result(#(List(Dynamic), Lua), Dynamic)
+
+/// Evaluates a compiled chunk of Lua code.
+///
+/// ## Examples
+/// ```gleam
+/// let assert Ok(#(chunk, lua)) = load(glua.new(), "return 'hello, world!'")
+/// eval(lua, chunk)
+/// -> Ok(#(["hello, world!"], Lua)) 
+/// ```
+pub fn eval_chunk(
+  lua lua: Lua,
+  chunk chunk: Chunk,
+) -> Result(#(List(Dynamic), Lua), LuaError) {
+  do_eval_chunk(lua, chunk) |> result.map_error(parse_lua_error)
+}
+
+@external(erlang, "glua_ffi", "eval_chunk")
+fn do_eval_chunk(
+  lua lua: Lua,
+  chunk chunk: Chunk,
 ) -> Result(#(List(Dynamic), Lua), Dynamic)
 
 /// Evaluates a Lua source file.
