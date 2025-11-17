@@ -194,6 +194,15 @@ pub fn set(
   do_set(lua, keys, val) |> result.map_error(parse_lua_error)
 }
 
+pub fn set_api(
+  lua: Lua,
+  keys: List(String),
+  values: List(#(String, Value)),
+) -> Result(Lua, LuaError) {
+  use state, #(key, val) <- list.try_fold(values, lua)
+  set(state, list.append(keys, [key]), val)
+}
+
 @external(erlang, "luerl", "encode_list")
 fn encode_list(keys: List(String), lua: Lua) -> #(List(Dynamic), Lua)
 
