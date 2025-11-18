@@ -1,4 +1,8 @@
-import gleam/dynamic.{type Dynamic}
+//// A library to embed Lua in Gleam programs.
+////
+//// Gleam wrapper around [Luerl](https://github.com/rvirding/luerl).
+
+import gleam/dynamic
 import gleam/dynamic/decode
 import gleam/list
 import gleam/pair
@@ -100,7 +104,7 @@ pub fn table_decoder(
 
 pub fn function(
   lua: Lua,
-  f: fn(Lua, List(Dynamic)) -> #(Lua, List(Value)),
+  f: fn(Lua, List(dynamic.Dynamic)) -> #(Lua, List(Value)),
 ) -> #(Lua, Value) {
   // wrapper to satisfy luerl's order of arguments and return value
   let fun = fn(args, lua) { f(lua, decode_list(args, lua)) |> pair.swap }
@@ -134,8 +138,17 @@ pub fn new() -> Lua
 ///
 /// ```gleam
 /// let #(lua, encoded) = glua.new() |> glua.bool(True)
-/// let assert Ok(lua) = glua.set(state: lua, keys: ["my_table", "my_value"], value: encoded)
-/// glua.get(state: lua, keys: ["my_table", "my_value"], using: decode.bool)
+/// let assert Ok(lua) = glua.set(
+///   state: lua,
+///   keys: ["my_table", "my_value"],
+///   value: encoded
+/// )
+///
+/// glua.get(
+///   state: lua,
+///   keys: ["my_table", "my_value"],
+///   using: decode.bool
+/// )
 /// // -> Ok(True)
 /// ```
 ///
@@ -164,10 +177,10 @@ pub fn get(
 /// ## Examples
 ///
 /// ```gleam
-/// assert Ok("private value")
-///   == glua.new()
-///      |> glua.set_private("secret_value", "private_value")
-///      |> glua.get_private("secret_value", decode.string)
+/// assert glua.new()
+///      |> glua.set_private("private_value", "secret_value")
+///      |> glua.get_private("private_value", decode.string)
+///   == Ok("secret_value")
 /// ```
 pub fn get_private(
   state lua: Lua,
@@ -203,7 +216,12 @@ pub fn ref_get(
 ///
 /// ```gleam
 /// let #(lua, encoded) = glua.new() |> glua.int(10)
-/// let assert Ok(lua) = glua.set(state: lua, keys: ["my_number"], value: encoded)
+/// let assert Ok(lua) = glua.set(
+///   state: lua,
+///   keys: ["my_number"],
+///   value: encoded
+/// )
+///
 /// glua.get(state: lua, keys: ["my_number"], using: decode.int)
 /// // -> Ok(10)
 /// ```
@@ -211,8 +229,18 @@ pub fn ref_get(
 /// ```gleam
 /// let emails = ["jhondoe@example.com", "lucy@example.com"]
 /// let #(lua, encoded) = glua.new() |> glua.list(glua.string, emails)
-/// let assert Ok(lua) = glua.set(state: lua, keys: ["info", "emails"], value: encoded)
-/// let assert Ok(#(_, results)) = glua.eval(state: lua, code: "return info.emails", using: decode.string)
+/// let assert Ok(lua) = glua.set(
+///   state: lua,
+///   keys: ["info", "emails"],
+///   value: encoded
+/// )
+///
+/// let assert Ok(#(_, results)) = glua.eval(
+///   state: lua,
+///   code: "return info.emails",
+///   using: decode.string
+/// )
+///
 /// assert results == emails
 /// ```
 pub fn set(
@@ -242,10 +270,20 @@ pub fn set(
   do_set(lua, keys, val)
 }
 
+/// Sets a value that is not exposed to the Lua runtime and can only be accessed from Gleam.
+///
+/// ## Examples
+/// ```gleam
+/// assert glua.new()
+///        |> glua.set("secret_value", "private_value")
+///        |> glua.get("secret_value")
+///   == Ok("secret_value")
+/// ```
 pub fn set_private(state lua: Lua, key key: String, value value: a) -> Lua {
   do_set_private(key, value, lua)
 }
 
+/// Sets a group of values under a particular table in the Lua environment.
 pub fn set_api(
   lua: Lua,
   keys: List(String),
@@ -256,29 +294,51 @@ pub fn set_api(
 }
 
 @external(erlang, "luerl", "encode_list")
-fn encode_list(keys: List(String), lua: Lua) -> #(List(Dynamic), Lua)
+fn encode_list(keys: List(String), lua: Lua) -> #(List(dynamic.Dynamic), Lua)
 
 @external(erlang, "luerl", "decode_list")
-fn decode_list(keys: List(a), lua: Lua) -> List(Dynamic)
+fn decode_list(keys: List(a), lua: Lua) -> List(dynamic.Dynamic)
 
 @external(erlang, "luerl_emul", "alloc_table")
 fn alloc_table(content: List(a), lua: Lua) -> #(a, Lua)
 
 @external(erlang, "glua_ffi", "get_table_keys_dec")
-fn do_get(lua: Lua, keys: List(Dynamic)) -> Result(Dynamic, LuaError)
+fn do_get(
+  lua: Lua,
+  keys: List(dynamic.Dynamic),
+) -> Result(dynamic.Dynamic, LuaError)
 
 @external(erlang, "glua_ffi", "get_private")
-fn do_get_private(lua: Lua, key: String) -> Result(Dynamic, LuaError)
+fn do_get_private(lua: Lua, key: String) -> Result(dynamic.Dynamic, LuaError)
 
 @external(erlang, "glua_ffi", "get_table_keys")
-fn do_ref_get(lua: Lua, keys: List(Dynamic)) -> Result(ValueRef, LuaError)
+fn do_ref_get(
+  lua: Lua,
+  keys: List(dynamic.Dynamic),
+) -> Result(ValueRef, LuaError)
 
 @external(erlang, "glua_ffi", "set_table_keys")
-fn do_set(lua: Lua, keys: List(Dynamic), val: a) -> Result(Lua, LuaError)
+fn do_set(
+  lua: Lua,
+  keys: List(dynamic.Dynamic),
+  val: a,
+) -> Result(Lua, LuaError)
 
 @external(erlang, "luerl", "put_private")
 fn do_set_private(key: String, value: a, lua: Lua) -> Lua
 
+/// Remove a private value that is not exposed to the Lua runtime. 
+///
+/// ## Examples
+///
+/// ```gleam
+/// let lua = glua.set_private(glua.new(), "my_value", "will_be_removed"
+/// assert glua.get(lua, "my_value", decode.string) == Ok("will_be_removed")
+///
+/// assert glua.delete_private(lua, "my_value")
+///        |> glua.get("my_value", decode.string)
+///   == Error(glua.KeyNotFound)
+/// ```
 pub fn delete_private(state lua: Lua, key key: String) -> Lua {
   do_delete_private(key, lua)
 }
@@ -317,30 +377,45 @@ fn do_load_file(lua: Lua, path: String) -> Result(#(Lua, Chunk), LuaError)
 /// ## Examples
 ///
 /// ```gleam
-/// let assert Ok(#(_, results)) = glua.eval(state: glua.new(), code: "return 1 + 2", using: decode.int)
+/// let assert Ok(#(_, results)) = glua.eval(
+///   state: glua.new(),
+///   code: "return 1 + 2",
+///   using: decode.int
+/// )
 /// assert results == [3]
 /// ```
 ///
 /// ```gleam
-/// let my_decoder = decode.one_of(decode.string, or: [decode.int |> decode.map(int.to_string)])
-/// let assert Ok(#(_, results)) = glua.eval(glua.new(), "return 'hello, world!', 10", using: my_decoder)
+/// let my_decoder = decode.one_of(decode.string, or: [
+///   decode.int |> decode.map(int.to_string)
+/// ])
+///
+/// let assert Ok(#(_, results)) = glua.eval(
+///   state: glua.new(),
+///   code: "return 'hello, world!', 10",
+///   using: my_decoder
+/// )
 /// assert results == ["hello, world!", "10"]
 /// ```
 ///
 /// ```gleam
 /// glua.eval(state: glua.new(), code: "return 1 * ", using: decode.int)
-/// // -> Error(SyntaxError)
+/// // -> Error(glua.LuaCompilerException(
+///   messages: ["syntax error before: ", "1"]
+/// ))
 /// ```
 ///
 /// ```gleam
 /// glua.eval(state: glua.new(), code: "return 'Hello, world!'", using: decode.int)
-/// // -> Error(UnexpectedResultType())
+/// // -> Error(glua.UnexpectedResultType(
+///   [decode.DecodeError("Int", "String", [])]
+/// ))
 /// ```
 ///
-/// Note: If you are evaluating the same piece of code multiple times,
-/// instead of calling `glua.eval` repeatly it is recommended to first convert
-/// the code to a chunk by passing it to `glua.load`, and then
-/// evaluate that chunk using `glua.eval_chunk` or `glua.ref_eval_chunk`.
+/// > **Note**: If you are evaluating the same piece of code multiple times,
+/// > instead of calling `glua.eval` repeatly it is recommended to first convert
+/// > the code to a chunk by passing it to `glua.load`, and then
+/// > evaluate that chunk using `glua.eval_chunk` or `glua.ref_eval_chunk`.
 pub fn eval(
   state lua: Lua,
   code code: String,
@@ -356,7 +431,10 @@ pub fn eval(
 }
 
 @external(erlang, "glua_ffi", "eval_dec")
-fn do_eval(lua: Lua, code: String) -> Result(#(Lua, List(Dynamic)), LuaError)
+fn do_eval(
+  lua: Lua,
+  code: String,
+) -> Result(#(Lua, List(dynamic.Dynamic)), LuaError)
 
 /// Same as `glua.eval`, but returns references to the values instead of decode them
 pub fn ref_eval(
@@ -376,8 +454,17 @@ fn do_ref_eval(
 ///
 /// ## Examples
 /// ```gleam
-/// let assert Ok(#(lua, chunk)) = glua.load(state: glua.new(), code: "return 'hello, world!'")
-/// let assert Ok(#(_, results)) = glua.eval_chunk(state: lua, chunk: chunk, using: decode.string)
+/// let assert Ok(#(lua, chunk)) = glua.load(
+///   state: glua.new(),
+///   code: "return 'hello, world!'"
+/// )
+///
+/// let assert Ok(#(_, results)) = glua.eval_chunk(
+///   state: lua,
+///   chunk:,
+///   using: decode.string
+/// )
+///
 /// assert results == ["hello, world!"]
 /// ```
 pub fn eval_chunk(
@@ -398,7 +485,7 @@ pub fn eval_chunk(
 fn do_eval_chunk(
   lua: Lua,
   chunk: Chunk,
-) -> Result(#(Lua, List(Dynamic)), LuaError)
+) -> Result(#(Lua, List(dynamic.Dynamic)), LuaError)
 
 /// Same as `glua.eval_chunk`, but returns references to the values instead of decode them
 pub fn ref_eval_chunk(
@@ -418,7 +505,12 @@ fn do_ref_eval_chunk(
 ///
 /// ## Examples
 /// ```gleam
-/// let assert Ok(#(_, results)) = glua.eval_file(state: glua.new(), path: "path/to/hello.lua", using: decode.string)
+/// let assert Ok(#(_, results)) = glua.eval_file(
+///   state: glua.new(),
+///   path: "path/to/hello.lua",
+///   using: decode.string
+/// )
+///
 /// assert results == ["hello, world!"]
 /// ```
 pub fn eval_file(
@@ -439,7 +531,7 @@ pub fn eval_file(
 fn do_eval_file(
   lua: Lua,
   path: String,
-) -> Result(#(Lua, List(Dynamic)), LuaError)
+) -> Result(#(Lua, List(dynamic.Dynamic)), LuaError)
 
 /// Same as `glua.eval_file`, but returns references to the values instead of decode them.
 pub fn ref_eval_file(
@@ -460,8 +552,15 @@ fn do_ref_eval_file(
 /// ## Examples
 /// ```gleam
 /// let assert Ok(#(lua, fun)) = glua.ref_eval(state: glua.new(), code: "return math.sqrt")
+///
 /// let #(lua, encoded) = glua.int(lua, 81)
-/// let assert Ok(#(_, [result])) = glua.call_function(state: lua, ref: fun, args: [encoded], using: decode.int)
+/// let assert Ok(#(_, [result])) = glua.call_function(
+///   state: lua,
+///   ref: fun,
+///   args: [encoded],
+///   using: decode.int
+/// )
+///
 /// assert result == 9
 /// ```
 ///
@@ -472,13 +571,20 @@ fn do_ref_eval_file(
 ///   else
 ///     return fib(n - 1) + fib(n - 2)
 ///   end
-///end
+/// end
 ///
-///return fib
-///"
+/// return fib
+/// "
 /// let assert Ok(#(lua, fun)) = glua.ref_eval(state: glua.new(), code:)
+///
 /// let #(lua, encoded) = glua.int(lua, 10)
-/// let assert Ok(#(_, [result])) = glua.call_function(state: lua, ref: fun, args: [encoded], using: decode.int)
+/// let assert Ok(#(_, [result])) = glua.call_function(
+///   state: lua,
+///   ref: fun,
+///   args: [encoded],
+///   using: decode.int
+/// )
+///
 /// assert result == 55 
 /// ```
 pub fn call_function(
@@ -501,7 +607,7 @@ fn do_call_function(
   lua: Lua,
   fun: ValueRef,
   args: List(Value),
-) -> Result(#(Lua, List(Dynamic)), LuaError)
+) -> Result(#(Lua, List(dynamic.Dynamic)), LuaError)
 
 /// Same as `glua.call_function`, but returns references to the values instead of decode them.
 pub fn ref_call_function(
@@ -533,6 +639,7 @@ fn do_ref_call_function(
 ///   args: [encoded],
 ///   using: decode.string
 /// )
+///
 /// assert s == "HELLO FROM GLEAM!" 
 /// ```
 pub fn call_function_by_name(
