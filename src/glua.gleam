@@ -159,6 +159,29 @@ pub fn get(
   Ok(decoded)
 }
 
+/// Gets a private value that is not exposed to the Lua runtime.
+///
+/// ## Examples
+///
+/// ```gleam
+/// assert Ok("private value")
+///   == glua.new()
+///      |> glua.set_private("secret_value", "private_value")
+///      |> glua.get_private("secret_value", decode.string)
+/// ```
+pub fn get_private(
+  state lua: Lua,
+  key key: String,
+  using decoder: decode.Decoder(a),
+) -> Result(a, LuaError) {
+  use value <- result.try(do_get_private(lua, key))
+  use decoded <- result.try(
+    decode.run(value, decoder) |> result.map_error(UnexpectedResultType),
+  )
+
+  Ok(decoded)
+}
+
 /// Same as `glua.get`, but returns a reference to the value instead of decoding it
 pub fn ref_get(
   lua lua: Lua,
@@ -219,6 +242,10 @@ pub fn set(
   do_set(lua, keys, val)
 }
 
+pub fn set_private(state lua: Lua, key key: String, value value: a) -> Lua {
+  do_set_private(key, value, lua)
+}
+
 pub fn set_api(
   lua: Lua,
   keys: List(String),
@@ -240,11 +267,24 @@ fn alloc_table(content: List(a), lua: Lua) -> #(a, Lua)
 @external(erlang, "glua_ffi", "get_table_keys_dec")
 fn do_get(lua: Lua, keys: List(Dynamic)) -> Result(Dynamic, LuaError)
 
+@external(erlang, "glua_ffi", "get_private")
+fn do_get_private(lua: Lua, key: String) -> Result(Dynamic, LuaError)
+
 @external(erlang, "glua_ffi", "get_table_keys")
 fn do_ref_get(lua: Lua, keys: List(Dynamic)) -> Result(ValueRef, LuaError)
 
 @external(erlang, "glua_ffi", "set_table_keys")
 fn do_set(lua: Lua, keys: List(Dynamic), val: a) -> Result(Lua, LuaError)
+
+@external(erlang, "luerl", "put_private")
+fn do_set_private(key: String, value: a, lua: Lua) -> Lua
+
+pub fn delete_private(state lua: Lua, key key: String) -> Lua {
+  do_delete_private(key, lua)
+}
+
+@external(erlang, "luerl", "delete_private")
+fn do_delete_private(key: String, lua: Lua) -> Lua
 
 /// Parses a string of Lua code and returns it as a compiled chunk.
 ///

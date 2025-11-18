@@ -98,6 +98,28 @@ pub fn set_test() {
   assert result == 5
 }
 
+pub fn get_private_test() {
+  assert glua.new()
+    |> glua.set_private("test", [1, 2, 3])
+    |> glua.get_private("test", using: decode.list(decode.int))
+    == Ok([1, 2, 3])
+
+  assert glua.new()
+    |> glua.get_private("non_existent", using: decode.string)
+    == Error(glua.KeyNotFound)
+}
+
+pub fn delete_private_test() {
+  let lua = glua.set_private(glua.new(), "the_value", "that_will_be_deleted")
+
+  assert glua.get_private(lua, "the_value", using: decode.string)
+    == Ok("that_will_be_deleted")
+
+  assert glua.delete_private(lua, "the_value")
+    |> glua.get_private(key: "the_value", using: decode.string)
+    == Error(glua.KeyNotFound)
+}
+
 pub fn load_test() {
   let assert Ok(#(lua, chunk)) =
     glua.load(state: glua.new(), code: "return 5 * 5")

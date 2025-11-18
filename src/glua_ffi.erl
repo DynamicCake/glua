@@ -1,5 +1,5 @@
 -module(glua_ffi).
--export([lua_nil/1, encode/2, get_table_keys/2, get_table_keys_dec/2, set_table_keys/3, load/2, load_file/2, eval/2, eval_dec/2, eval_file/2, eval_file_dec/2, eval_chunk/2, eval_chunk_dec/2, call_function/3, call_function_dec/3]).
+-export([lua_nil/1, encode/2, get_table_keys/2, get_table_keys_dec/2, get_private/2, set_table_keys/3, load/2, load_file/2, eval/2, eval_dec/2, eval_file/2, eval_file_dec/2, eval_chunk/2, eval_chunk_dec/2, call_function/3, call_function_dec/3]).
 
 %% helper to convert luerl return values to a format
 %% that is more suitable for use in Gleam code
@@ -102,4 +102,11 @@ call_function_dec(Lua, Fun, Args) ->
 
     Other -> to_gleam(Other)
   end.
-      
+
+get_private(Lua, Key) ->
+  try
+    {ok, luerl:get_private(Key, Lua)}
+  catch
+    error:{badkey, _} ->
+      {error, key_not_found}
+  end.
