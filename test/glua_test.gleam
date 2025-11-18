@@ -38,6 +38,20 @@ pub fn get_test() {
   assert ret == 10
 }
 
+pub fn get_returns_proper_errors_test() {
+  let state = glua.new()
+
+  assert glua.get(state:, keys: ["non_existent_global"], using: decode.string)
+    == Error(glua.KeyNotFound)
+
+  let #(state, encoded) = glua.int(state, 10)
+  let assert Ok(state) =
+    glua.set(state:, keys: ["my_table", "some_value"], value: encoded)
+
+  assert glua.get(state:, keys: ["my_table", "my_val"], using: decode.int)
+    == Error(glua.KeyNotFound)
+}
+
 pub fn set_test() {
   let numbers =
     [2, 4, 7, 12]
@@ -118,6 +132,61 @@ pub fn eval_test() {
   assert results == [4, 2]
 }
 
+pub fn eval_returns_proper_errors_test() {
+  let state = glua.new()
+
+  assert glua.eval(state:, code: "if true then 1 + ", using: decode.int)
+    == Error(
+      glua.LuaCompilerException(messages: ["syntax error before: ", "1"]),
+    )
+
+  assert glua.eval(state:, code: "return 'Hello from Lua!'", using: decode.int)
+    == Error(
+      glua.UnexpectedResultType([decode.DecodeError("Int", "String", [])]),
+    )
+
+  let assert Error(glua.LuaRuntimeException(
+    exception: glua.IllegalIndex(value:, index:),
+    state: _,
+  )) = glua.eval(state:, code: "return a.b", using: decode.int)
+
+  assert value == "nil"
+  assert index == "b"
+
+  let assert Error(glua.LuaRuntimeException(
+    exception: glua.ErrorCall(messages:),
+    state: _,
+  )) = glua.eval(state:, code: "error('error message')", using: decode.int)
+
+  assert messages == ["error message"]
+
+  let assert Error(glua.LuaRuntimeException(
+    exception: glua.UndefinedFunction(value:),
+    state: _,
+  )) = glua.eval(state:, code: "local a = 5; a()", using: decode.int)
+
+  assert value == "5"
+  let assert Error(glua.LuaRuntimeException(
+    exception: glua.BadArith(operator:, args:),
+    state: _,
+  )) = glua.eval(state:, code: "return 10 / 0", using: decode.int)
+
+  assert operator == "/"
+  assert args == ["10", "0"]
+
+  let assert Error(glua.LuaRuntimeException(
+    exception: glua.AssertError(message:),
+    state: _,
+  )) =
+    glua.eval(
+      state:,
+      code: "assert(1 == 2, 'assertion failed')",
+      using: decode.int,
+    )
+
+  assert message == "assertion failed"
+}
+
 pub fn eval_file_test() {
   let assert Ok(#(_, [result])) =
     glua.eval_file(
@@ -154,6 +223,29 @@ pub fn call_function_test() {
     glua.call_function(state: lua, ref: fun, args:, using: decode.string)
 
   assert result == "Lua in Gleam"
+}
+
+pub fn call_function_returns_proper_errors_test() {
+  let state = glua.new()
+
+  let assert Ok(#(state, [ref])) =
+    glua.ref_eval(state:, code: "return string.upper")
+
+  let #(state, arg) = glua.string(state, "Hello from Gleam!")
+
+  assert glua.call_function(state:, ref:, args: [arg], using: decode.int)
+    == Error(
+      glua.UnexpectedResultType([decode.DecodeError("Int", "String", [])]),
+    )
+
+  let assert Ok(#(lua, [ref])) = glua.ref_eval(state:, code: "return 1")
+
+  let assert Error(glua.LuaRuntimeException(
+    exception: glua.UndefinedFunction(value:),
+    state: _,
+  )) = glua.call_function(state: lua, ref:, args: [], using: decode.string)
+
+  assert value == "1"
 }
 
 pub fn call_function_by_name_test() {

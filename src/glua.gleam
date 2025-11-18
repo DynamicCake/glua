@@ -9,10 +9,35 @@ pub type Lua
 
 /// Represents the errors than can happend during the parsing and execution of Lua code
 pub type LuaError {
+  /// There was an exception when compiling the Lua code.
+  LuaCompilerException(messages: List(String))
+  /// The Lua environment threw an exception during code execution.
+  LuaRuntimeException(exception: LuaRuntimeExceptionKind, state: Lua)
+  /// A certain key was not found in the Lua environment.
+  KeyNotFound
+  /// The value returned by the Lua environment could not be decoded using the provided decoder.
   UnexpectedResultType(List(decode.DecodeError))
+  /// An error that could not be identified.
   UnknownError
 }
 
+/// Represents the kind of exceptions that can happen at runtime during Lua code execution.
+pub type LuaRuntimeExceptionKind {
+  /// The exception that happens when trying to access an index that does not exists on a table (also happens when indexing non-table values).
+  IllegalIndex(value: String, index: String)
+  /// The exception that happens when the `error` function is called.
+  ErrorCall(messages: List(String))
+  /// The exception that happens when trying to call a function that is not defined.
+  UndefinedFunction(value: String)
+  /// The exception that happens when an invalid arithmetic operation is performed.
+  BadArith(operator: String, args: List(String))
+  /// The exception that happens when a call to assert is made passing a value that evalues to `false` as the first argument.
+  AssertError(message: String)
+  /// An exception that could not be identified
+  UnknownException
+}
+
+/// The exception that happens when a functi
 /// Represents a chunk of Lua code that is already loaded into the Lua VM
 pub type Chunk
 
@@ -116,7 +141,7 @@ pub fn new() -> Lua
 ///
 /// ```gleam
 /// glua.get(state: glua.new(), keys: ["non_existent"], using: decode.string)
-/// // -> Error(NonExistentValue)
+/// // -> Error(glua.KeyNotFound)
 /// ```
 pub fn get(
   state lua: Lua,
@@ -125,9 +150,7 @@ pub fn get(
 ) -> Result(a, LuaError) {
   let #(keys, lua) = encode_list(keys, lua)
 
-  use value <- result.try(
-    do_get(lua, keys) |> result.map_error(parse_lua_error),
-  )
+  use value <- result.try(do_get(lua, keys))
 
   use decoded <- result.try(
     decode.run(value, decoder) |> result.map_error(UnexpectedResultType),
@@ -143,7 +166,7 @@ pub fn ref_get(
 ) -> Result(ValueRef, LuaError) {
   let #(keys, lua) = encode_list(keys, lua)
 
-  do_ref_get(lua, keys) |> result.map_error(parse_lua_error)
+  do_ref_get(lua, keys)
 }
 
 /// Sets a value in the Lua environment.
@@ -181,17 +204,19 @@ pub fn set(
     let keys = list.append(keys, [key])
     case do_get(lua, keys) {
       Ok(_) -> Ok(#(keys, lua))
-      _ -> {
+
+      Error(KeyNotFound) -> {
         let #(tbl, lua) = alloc_table([], lua)
-        case do_set(lua, keys, tbl) {
-          Ok(lua) -> Ok(#(keys, lua))
-          Error(e) -> Error(parse_lua_error(e))
-        }
+        do_set(lua, keys, tbl)
+        |> result.map(fn(lua) { #(keys, lua) })
       }
+
+      Error(e) -> Error(e)
     }
   }
+
   use #(keys, lua) <- result.try(state)
-  do_set(lua, keys, val) |> result.map_error(parse_lua_error)
+  do_set(lua, keys, val)
 }
 
 pub fn set_api(
@@ -213,13 +238,13 @@ fn decode_list(keys: List(a), lua: Lua) -> List(Dynamic)
 fn alloc_table(content: List(a), lua: Lua) -> #(a, Lua)
 
 @external(erlang, "glua_ffi", "get_table_keys_dec")
-fn do_get(lua: Lua, keys: List(Dynamic)) -> Result(Dynamic, Dynamic)
+fn do_get(lua: Lua, keys: List(Dynamic)) -> Result(Dynamic, LuaError)
 
 @external(erlang, "glua_ffi", "get_table_keys")
-fn do_ref_get(lua: Lua, keys: List(Dynamic)) -> Result(ValueRef, Dynamic)
+fn do_ref_get(lua: Lua, keys: List(Dynamic)) -> Result(ValueRef, LuaError)
 
 @external(erlang, "glua_ffi", "set_table_keys")
-fn do_set(lua: Lua, keys: List(Dynamic), val: a) -> Result(Lua, Dynamic)
+fn do_set(lua: Lua, keys: List(Dynamic), val: a) -> Result(Lua, LuaError)
 
 /// Parses a string of Lua code and returns it as a compiled chunk.
 ///
@@ -228,11 +253,11 @@ pub fn load(
   state lua: Lua,
   code code: String,
 ) -> Result(#(Lua, Chunk), LuaError) {
-  do_load(lua, code) |> result.map_error(parse_lua_error)
+  do_load(lua, code)
 }
 
 @external(erlang, "glua_ffi", "load")
-fn do_load(lua: Lua, code: String) -> Result(#(Lua, Chunk), Dynamic)
+fn do_load(lua: Lua, code: String) -> Result(#(Lua, Chunk), LuaError)
 
 /// Parses a Lua source file and returns it as a compiled chunk.
 ///
@@ -241,11 +266,11 @@ pub fn load_file(
   state lua: Lua,
   path path: String,
 ) -> Result(#(Lua, Chunk), LuaError) {
-  do_load_file(lua, path) |> result.map_error(parse_lua_error)
+  do_load_file(lua, path)
 }
 
 @external(erlang, "glua_ffi", "load_file")
-fn do_load_file(lua: Lua, path: String) -> Result(#(Lua, Chunk), Dynamic)
+fn do_load_file(lua: Lua, path: String) -> Result(#(Lua, Chunk), LuaError)
 
 /// Evaluates a string of Lua code.
 ///
@@ -281,9 +306,7 @@ pub fn eval(
   code code: String,
   using decoder: decode.Decoder(a),
 ) -> Result(#(Lua, List(a)), LuaError) {
-  use #(lua, ret) <- result.try(
-    do_eval(lua, code) |> result.map_error(parse_lua_error),
-  )
+  use #(lua, ret) <- result.try(do_eval(lua, code))
   use decoded <- result.try(
     list.try_map(ret, decode.run(_, decoder))
     |> result.map_error(UnexpectedResultType),
@@ -293,21 +316,21 @@ pub fn eval(
 }
 
 @external(erlang, "glua_ffi", "eval_dec")
-fn do_eval(lua: Lua, code: String) -> Result(#(Lua, List(Dynamic)), Dynamic)
+fn do_eval(lua: Lua, code: String) -> Result(#(Lua, List(Dynamic)), LuaError)
 
 /// Same as `glua.eval`, but returns references to the values instead of decode them
 pub fn ref_eval(
   state lua: Lua,
   code code: String,
 ) -> Result(#(Lua, List(ValueRef)), LuaError) {
-  do_ref_eval(lua, code) |> result.map_error(parse_lua_error)
+  do_ref_eval(lua, code)
 }
 
 @external(erlang, "glua_ffi", "eval")
 fn do_ref_eval(
   lua: Lua,
   code: String,
-) -> Result(#(Lua, List(ValueRef)), Dynamic)
+) -> Result(#(Lua, List(ValueRef)), LuaError)
 
 /// Evaluates a compiled chunk of Lua code.
 ///
@@ -322,9 +345,7 @@ pub fn eval_chunk(
   chunk chunk: Chunk,
   using decoder: decode.Decoder(a),
 ) -> Result(#(Lua, List(a)), LuaError) {
-  use #(lua, ret) <- result.try(
-    do_eval_chunk(lua, chunk) |> result.map_error(parse_lua_error),
-  )
+  use #(lua, ret) <- result.try(do_eval_chunk(lua, chunk))
   use decoded <- result.try(
     list.try_map(ret, decode.run(_, decoder))
     |> result.map_error(UnexpectedResultType),
@@ -337,21 +358,21 @@ pub fn eval_chunk(
 fn do_eval_chunk(
   lua: Lua,
   chunk: Chunk,
-) -> Result(#(Lua, List(Dynamic)), Dynamic)
+) -> Result(#(Lua, List(Dynamic)), LuaError)
 
 /// Same as `glua.eval_chunk`, but returns references to the values instead of decode them
 pub fn ref_eval_chunk(
   state lua: Lua,
   chunk chunk: Chunk,
 ) -> Result(#(Lua, List(ValueRef)), LuaError) {
-  do_ref_eval_chunk(lua, chunk) |> result.map_error(parse_lua_error)
+  do_ref_eval_chunk(lua, chunk)
 }
 
 @external(erlang, "glua_ffi", "eval_chunk")
 fn do_ref_eval_chunk(
   lua: Lua,
   chunk: Chunk,
-) -> Result(#(Lua, List(ValueRef)), Dynamic)
+) -> Result(#(Lua, List(ValueRef)), LuaError)
 
 /// Evaluates a Lua source file.
 ///
@@ -365,9 +386,7 @@ pub fn eval_file(
   path path: String,
   using decoder: decode.Decoder(a),
 ) -> Result(#(Lua, List(a)), LuaError) {
-  use #(lua, ret) <- result.try(
-    do_eval_file(lua, path) |> result.map_error(parse_lua_error),
-  )
+  use #(lua, ret) <- result.try(do_eval_file(lua, path))
   use decoded <- result.try(
     list.try_map(ret, decode.run(_, decoder))
     |> result.map_error(UnexpectedResultType),
@@ -380,21 +399,21 @@ pub fn eval_file(
 fn do_eval_file(
   lua: Lua,
   path: String,
-) -> Result(#(Lua, List(Dynamic)), Dynamic)
+) -> Result(#(Lua, List(Dynamic)), LuaError)
 
 /// Same as `glua.eval_file`, but returns references to the values instead of decode them.
 pub fn ref_eval_file(
   state lua: Lua,
   path path: String,
 ) -> Result(#(Lua, List(ValueRef)), LuaError) {
-  do_ref_eval_file(lua, path) |> result.map_error(parse_lua_error)
+  do_ref_eval_file(lua, path)
 }
 
 @external(erlang, "glua_ffi", "eval_file")
 fn do_ref_eval_file(
   lua: Lua,
   path: String,
-) -> Result(#(Lua, List(ValueRef)), Dynamic)
+) -> Result(#(Lua, List(ValueRef)), LuaError)
 
 /// Calls a Lua function by reference.
 ///
@@ -428,9 +447,7 @@ pub fn call_function(
   args args: List(Value),
   using decoder: decode.Decoder(a),
 ) -> Result(#(Lua, List(a)), LuaError) {
-  use #(lua, ret) <- result.try(
-    do_call_function(lua, fun, args) |> result.map_error(parse_lua_error),
-  )
+  use #(lua, ret) <- result.try(do_call_function(lua, fun, args))
   use decoded <- result.try(
     list.try_map(ret, decode.run(_, decoder))
     |> result.map_error(UnexpectedResultType),
@@ -444,7 +461,7 @@ fn do_call_function(
   lua: Lua,
   fun: ValueRef,
   args: List(Value),
-) -> Result(#(Lua, List(Dynamic)), Dynamic)
+) -> Result(#(Lua, List(Dynamic)), LuaError)
 
 /// Same as `glua.call_function`, but returns references to the values instead of decode them.
 pub fn ref_call_function(
@@ -452,7 +469,7 @@ pub fn ref_call_function(
   ref fun: ValueRef,
   args args: List(Value),
 ) -> Result(#(Lua, List(ValueRef)), LuaError) {
-  do_ref_call_function(lua, fun, args) |> result.map_error(parse_lua_error)
+  do_ref_call_function(lua, fun, args)
 }
 
 @external(erlang, "glua_ffi", "call_function")
@@ -460,7 +477,7 @@ fn do_ref_call_function(
   lua: Lua,
   fun: ValueRef,
   args: List(Value),
-) -> Result(#(Lua, List(ValueRef)), Dynamic)
+) -> Result(#(Lua, List(ValueRef)), LuaError)
 
 /// Gets a reference to the function at `keys`, then inmediatly calls it with the provided `args`.
 ///
@@ -496,9 +513,4 @@ pub fn ref_call_function_by_name(
 ) -> Result(#(Lua, List(ValueRef)), LuaError) {
   use fun <- result.try(ref_get(lua, keys))
   ref_call_function(lua, fun, args)
-}
-
-// TODO: Actual error parsing
-fn parse_lua_error(_err: Dynamic) -> LuaError {
-  UnknownError
 }
