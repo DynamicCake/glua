@@ -53,13 +53,21 @@ pub fn get_returns_proper_errors_test() {
 }
 
 pub fn set_test() {
+  let #(lua, encoded) = glua.string(glua.new(), "custom version")
+
+  let assert Ok(lua) = glua.set(state: lua, keys: ["_VERSION"], value: encoded)
+  let assert Ok(result) =
+    glua.get(state: lua, keys: ["_VERSION"], using: decode.string)
+
+  assert result == "custom version"
+
   let numbers =
     [2, 4, 7, 12]
     |> list.index_map(fn(n, i) { #(i + 1, n * n) })
 
   let keys = ["math", "squares"]
 
-  let #(lua, encoded) = glua.table(glua.new(), #(glua.int, glua.int), numbers)
+  let #(lua, encoded) = glua.table(lua, #(glua.int, glua.int), numbers)
   let assert Ok(lua) = glua.set(lua, keys, encoded)
 
   assert glua.get(lua, keys, glua.table_decoder(decode.int, decode.int))
@@ -96,6 +104,17 @@ pub fn set_test() {
     )
 
   assert result == 5
+}
+
+pub fn set_lua_paths_test() {
+  let assert Ok(state) =
+    glua.set_lua_paths(state: glua.new(), paths: ["./test/lua/?.lua"])
+
+  let code = "local s = require 'example'; return s"
+
+  let assert Ok(#(_, [result])) = glua.eval(state:, code:, using: decode.string)
+
+  assert result == "LUA IS AN EMBEDDABLE LANGUAGE"
 }
 
 pub fn get_private_test() {
@@ -135,7 +154,7 @@ pub fn eval_load_file_test() {
   let assert Ok(#(_, [result])) =
     glua.eval_chunk(state: lua, chunk:, using: decode.string)
 
-  result == "LUA IS AN EMBEDDABLE LANGUAGE"
+  assert result == "LUA IS AN EMBEDDABLE LANGUAGE"
 }
 
 pub fn eval_test() {

@@ -7,6 +7,7 @@ import gleam/dynamic/decode
 import gleam/list
 import gleam/pair
 import gleam/result
+import gleam/string
 
 /// Represents an instance of the Lua VM.
 pub type Lua
@@ -161,8 +162,6 @@ pub fn get(
   keys keys: List(String),
   using decoder: decode.Decoder(a),
 ) -> Result(a, LuaError) {
-  let #(keys, lua) = encode_list(keys, lua)
-
   use value <- result.try(do_get(lua, keys))
 
   use decoded <- result.try(
@@ -200,8 +199,6 @@ pub fn ref_get(
   lua lua: Lua,
   keys keys: List(String),
 ) -> Result(ValueRef, LuaError) {
-  let #(keys, lua) = encode_list(keys, lua)
-
   do_ref_get(lua, keys)
 }
 
@@ -246,14 +243,13 @@ pub fn ref_get(
 pub fn set(
   state lua: Lua,
   keys keys: List(String),
-  value val: a,
+  value val: Value,
 ) -> Result(Lua, LuaError) {
-  let encoded = encode_list(keys, lua)
   let state = {
-    use acc, key <- list.try_fold(encoded.0, #([], encoded.1))
+    use acc, key <- list.try_fold(keys, #([], lua))
     let #(keys, lua) = acc
     let keys = list.append(keys, [key])
-    case do_get(lua, keys) {
+    case do_ref_get(lua, keys) {
       Ok(_) -> Ok(#(keys, lua))
 
       Error(KeyNotFound) -> {
@@ -293,8 +289,32 @@ pub fn set_api(
   set(state, list.append(keys, [key]), val)
 }
 
-@external(erlang, "luerl", "encode_list")
-fn encode_list(keys: List(String), lua: Lua) -> #(List(dynamic.Dynamic), Lua)
+/// Sets the paths where the Lua runtime will look when requiring other Lua files.
+///
+/// ## Examples
+///
+/// ```gleam
+/// let my_scripts_paths = ["app/scripts/lua/?.lua"]
+/// let assert Ok(state) = glua.set_lua_paths(
+///   state: glua.new(),
+///   paths: my_scripts_paths
+/// )
+///
+/// let assert Ok(#(_, [result])) = glua.eval(
+///   state:,
+///   code: "local my_math = require 'my_script'; return my_math.square(3)"
+///   using: decode.int
+/// )
+///
+/// assert result = 9
+/// ```
+pub fn set_lua_paths(
+  state lua: Lua,
+  paths paths: List(String),
+) -> Result(Lua, LuaError) {
+  let #(lua, paths) = string(lua, string.join(paths, with: ";"))
+  set(lua, ["package", "path"], paths)
+}
 
 @external(erlang, "luerl", "decode_list")
 fn decode_list(keys: List(a), lua: Lua) -> List(dynamic.Dynamic)
@@ -303,26 +323,16 @@ fn decode_list(keys: List(a), lua: Lua) -> List(dynamic.Dynamic)
 fn alloc_table(content: List(a), lua: Lua) -> #(a, Lua)
 
 @external(erlang, "glua_ffi", "get_table_keys_dec")
-fn do_get(
-  lua: Lua,
-  keys: List(dynamic.Dynamic),
-) -> Result(dynamic.Dynamic, LuaError)
+fn do_get(lua: Lua, keys: List(String)) -> Result(dynamic.Dynamic, LuaError)
 
 @external(erlang, "glua_ffi", "get_private")
 fn do_get_private(lua: Lua, key: String) -> Result(dynamic.Dynamic, LuaError)
 
 @external(erlang, "glua_ffi", "get_table_keys")
-fn do_ref_get(
-  lua: Lua,
-  keys: List(dynamic.Dynamic),
-) -> Result(ValueRef, LuaError)
+fn do_ref_get(lua: Lua, keys: List(String)) -> Result(ValueRef, LuaError)
 
 @external(erlang, "glua_ffi", "set_table_keys")
-fn do_set(
-  lua: Lua,
-  keys: List(dynamic.Dynamic),
-  val: a,
-) -> Result(Lua, LuaError)
+fn do_set(lua: Lua, keys: List(String), val: a) -> Result(Lua, LuaError)
 
 @external(erlang, "luerl", "put_private")
 fn do_set_private(key: String, value: a, lua: Lua) -> Lua
