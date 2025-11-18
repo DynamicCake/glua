@@ -128,8 +128,9 @@ assert glua.get(
 ```gleam
 // here we use `ref_get` instead of `get` because we need a reference to the function
 // and not a decoded value
-let assert Ok(#(lua, [fun])) = glua.ref_get(
-  state: glua.new(),
+let lua = glua.new()
+let assert Ok(fun) = glua.ref_get(
+  state: lua,
   keys: ["math", "max"]
 )
 
