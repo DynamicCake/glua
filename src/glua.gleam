@@ -128,6 +128,64 @@ fn encode(lua: Lua, v: anything) -> #(Lua, Value)
 @external(erlang, "luerl", "init")
 pub fn new() -> Lua
 
+/// List of Lua modules and functions that will be sandboxed by default
+pub const default_sandbox = [
+  ["io"],
+  ["file"],
+  ["os", "execute"],
+  ["os", "exit"],
+  ["os", "getenv"],
+  ["os", "remove"],
+  ["os", "rename"],
+  ["os", "tmpname"],
+  ["package"],
+  ["load"],
+  ["loadfile"],
+  ["require"],
+  ["dofile"],
+  ["loadstring"],
+]
+
+/// Creates a new Lua VM instance with sensible modules and functions sandboxed.
+///
+/// Check `glua.default_sandbox` to see what modules and functions will be sandboxed.
+///
+/// This function accepts a list of paths to Lua values that will be excluded from being sandboxed,
+/// so needed modules or functions can be enabled while keeping sandboxed the rest.
+/// In case you want to sandbox more Lua values, pass to `glua.sandbox` the returned Lua state.
+pub fn new_sandboxed(
+  allow excluded: List(List(String)),
+) -> Result(Lua, LuaError) {
+  list_substraction(default_sandbox, excluded)
+  |> list.try_fold(from: new(), with: sandbox)
+}
+
+@external(erlang, "erlang", "--")
+fn list_substraction(a: List(a), b: List(a)) -> List(a)
+
+/// Swaps out the value at `keys` with a function that causes a Lua error when called.
+///
+/// ## Examples
+///
+/// ```gleam
+/// let assert Ok(lua) = glua.new() |> glua.sandbox(["os"], ["execute"])
+/// let assert Error(glua.LuaRuntimeException(exception, _)) = glua.eval(
+///   state: lua,
+///   code: "os.execute("rm -f important_file"); return 0",
+///   using: decode.int
+/// )
+/// // 'important_file' was not deleted
+/// assert exception == glua.ErrorCall(["os.execute is sandboxed"])
+/// ```
+pub fn sandbox(state lua: Lua, keys keys: List(String)) -> Result(Lua, LuaError) {
+  let msg = string.join(keys, with: ".") <> " is sandboxed"
+  let #(lua, fun) = encode(lua, sandbox_fun(msg))
+  set(lua, ["_G", ..keys], fun)
+}
+
+@external(erlang, "glua_ffi", "sandbox_fun")
+fn sandbox_fun(msg: String) -> Value
+
 /// Gets a value in the Lua environment.
 ///
 /// ## Examples
@@ -290,6 +348,10 @@ pub fn set_api(
 }
 
 /// Sets the paths where the Lua runtime will look when requiring other Lua files.
+///
+/// > **Warning**: This function will not work properly if `["package"]` or `["require"]` are sandboxed
+/// > in the provided Lua state. If you constructed the Lua state using `glua.new_sandboxed`,
+/// > remember to allow the required values by passing `[["package"], ["require"]]` to `glua.new_sandboxed`.
 ///
 /// ## Examples
 ///

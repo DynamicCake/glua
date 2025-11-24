@@ -11,6 +11,83 @@ pub fn main() -> Nil {
   gleeunit.main()
 }
 
+pub fn sandbox_test() {
+  let assert Ok(lua) = glua.sandbox(glua.new(), ["math", "max"])
+  let #(lua, args) = glua.list(lua, glua.int, [20, 10])
+
+  let assert Error(glua.LuaRuntimeException(exception, _)) =
+    glua.call_function_by_name(
+      state: lua,
+      keys: ["math", "max"],
+      args:,
+      using: decode.int,
+    )
+
+  assert exception == glua.ErrorCall(["math.max is sandboxed"])
+
+  let assert Ok(lua) = glua.sandbox(glua.new(), ["string"])
+
+  let assert Error(glua.LuaRuntimeException(glua.IllegalIndex(_, name), _)) =
+    glua.eval(
+      state: lua,
+      code: "return string.upper('my_string')",
+      using: decode.string,
+    )
+
+  assert name == "upper"
+
+  let assert Ok(lua) = glua.sandbox(glua.new(), ["os", "execute"])
+
+  let assert Error(glua.LuaRuntimeException(exception, _)) =
+    glua.ref_eval(
+      state: lua,
+      code: "os.execute(\"echo 'sandbox test is failing'\"); os.exit(1)",
+    )
+
+  assert exception == glua.ErrorCall(["os.execute is sandboxed"])
+
+  let assert Ok(lua) = glua.sandbox(glua.new(), ["print"])
+  let #(lua, arg) = glua.string(lua, "sandbox test is failing")
+  let assert Error(glua.LuaRuntimeException(exception, _)) =
+    glua.call_function_by_name(
+      state: lua,
+      keys: ["print"],
+      args: [arg],
+      using: decode.string,
+    )
+
+  assert exception == glua.ErrorCall(["print is sandboxed"])
+}
+
+pub fn new_sandboxed_test() {
+  let assert Ok(lua) = glua.new_sandboxed([])
+
+  let assert Error(glua.LuaRuntimeException(exception, _)) =
+    glua.ref_eval(state: lua, code: "return load(\"return 1\")")
+
+  assert exception == glua.ErrorCall(["load is sandboxed"])
+
+  let #(lua, arg) = glua.int(lua, 1)
+  let assert Error(glua.LuaRuntimeException(exception, _)) =
+    glua.ref_call_function_by_name(state: lua, keys: ["os", "exit"], args: [arg])
+
+  assert exception == glua.ErrorCall(["os.exit is sandboxed"])
+
+  let assert Error(glua.LuaRuntimeException(glua.IllegalIndex(_, name), _)) =
+    glua.ref_eval(state: lua, code: "io.write('some_message')")
+
+  assert name == "write"
+
+  let assert Ok(lua) = glua.new_sandboxed([["package"], ["require"]])
+  let assert Ok(lua) = glua.set_lua_paths(lua, paths: ["./test/lua/?.lua"])
+
+  let code = "local s = require 'example'; return s"
+  let assert Ok(#(_, [result])) =
+    glua.eval(state: lua, code:, using: decode.string)
+
+  assert result == "LUA IS AN EMBEDDABLE LANGUAGE"
+}
+
 pub fn get_test() {
   let state = glua.new()
 
