@@ -209,4 +209,4 @@ Further documentation can be found at <https://hexdocs.pm/glua>.
 ## Credits
 
 - [Luerl](https://github.com/rvirding/luerl): This library is powered by Luerl under the hood.
-- [Elixr's Lua library](https://github.com/tv-labs/lua) - This library API is inspired by Elixir's Lua library.
+- [Elixir's Lua library](https://github.com/tv-labs/lua) - This library API is inspired by Elixir's Lua library.
