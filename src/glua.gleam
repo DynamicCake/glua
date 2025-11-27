@@ -171,7 +171,7 @@ fn list_substraction(a: List(a), b: List(a)) -> List(a)
 /// let assert Ok(lua) = glua.new() |> glua.sandbox(["os"], ["execute"])
 /// let assert Error(glua.LuaRuntimeException(exception, _)) = glua.eval(
 ///   state: lua,
-///   code: "os.execute("rm -f important_file"); return 0",
+///   code: "os.execute(\"rm -f important_file\"); return 0",
 ///   using: decode.int
 /// )
 /// // 'important_file' was not deleted
