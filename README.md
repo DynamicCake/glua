@@ -95,13 +95,15 @@ let assert Ok(lua) = glua.set(state: lua, keys:, value: encoded)
 let assert Ok(value) = glua.get(state: lua, keys:, using: decode.string)
 
 // or return it from a Lua script
-let assert Ok(returned) = glua.eval(
-  state: lua,
-  code: "return my_table.my_value",
-  using: decode.string
-)
+let assert Ok(#(_lua, [returned])) =
+    glua.eval(
+      state: lua,
+      code: "return my_table.my_value",
+      using: decode.string,
+    )
 
-assert value == returned == "my_value"
+assert value == "my_value"
+assert returned == "my_value"
 ```
 
 ```gleam
@@ -118,7 +120,7 @@ let #(lua, encoded) = glua.new() |> glua.table(encoders, my_table)
 let assert Ok(lua) = glua.set(state: lua, keys: ["my_table"], value: encoded)
 
 // now we can get its values
-let assert #(lua, [result]) = glua.eval(
+let assert Ok(#(lua, [result])) = glua.eval(
   state: lua,
   code: "return my_table.my_second_value",
   using: decode.float
@@ -130,7 +132,7 @@ assert result == 2.1
 assert glua.get(
   state: lua,
   keys: ["my_table"],
-  using: glua.table_decoder(decode.string, decode.bool)
+  using: glua.table_decoder(decode.string, decode.float)
 ) == Ok([
   #("my_first_value", 1.2),
   #("my_second_value", 2.1)
@@ -152,7 +154,7 @@ let assert Ok(fun) = glua.ref_get(
 // `glua.list` encodes a list of values using a single encoder function
 let #(lua, args) = glua.list(lua, glua.int, [1, 20, 7, 18])
 
-let assert Ok(#(state, [result])) = glua.call_function(
+let assert Ok(#(lua, [result])) = glua.call_function(
   state: lua,
   ref: fun,
   args:,
@@ -162,7 +164,7 @@ let assert Ok(#(state, [result])) = glua.call_function(
 assert result == 20
 
 // `glua.call_function_by_name` is a shorthand for `glua.ref_get` followed by `glua.call_function`
-let assert Ok(#(_state, [result])) = glua.call_function_by_name(
+let assert Ok(#(_lua, [result])) = glua.call_function_by_name(
   state: lua,
   keys: ["math", "max"],
   args:,
