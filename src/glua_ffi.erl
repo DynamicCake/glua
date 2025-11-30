@@ -127,9 +127,9 @@ call_function(Lua, Fun, Args) ->
 
 call_function_dec(Lua, Fun, Args) ->
     case luerl:call(Fun, Args, Lua) of
-        {ok, Ret, Lua} ->
-            Values = luerl:decode_list(Ret, Lua),
-            {ok, {Lua, Values}};
+        {ok, Ret, State} ->
+            Values = luerl:decode_list(Ret, State),
+            {ok, {State, Values}};
         Other ->
             to_gleam(Other)
     end.
