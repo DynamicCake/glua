@@ -1,3 +1,4 @@
+import gleam/dict
 import gleam/dynamic
 import gleam/dynamic/decode
 import gleam/int
@@ -9,6 +10,30 @@ import glua
 
 pub fn main() -> Nil {
   gleeunit.main()
+}
+
+pub fn get_table_test() {
+  let lua = glua.new()
+  let my_table = [
+    #("meaning of life", 42),
+    #("pi", 3),
+    #("euler's number", 3),
+  ]
+  let #(lua, cool_numbers) =
+    glua.function(lua, fn(lua, _params) {
+      let #(lua, table) = glua.table(lua, #(glua.string, glua.int), my_table)
+      #(lua, [table])
+    })
+
+  let assert Ok(lua) = glua.set(lua, ["cool_numbers"], cool_numbers)
+  let assert Ok(#(_lua, [table])) =
+    glua.call_function_by_name(
+      lua,
+      ["cool_numbers"],
+      [],
+      using: glua.table_decoder(decode.string, decode.int),
+    )
+  assert dict.from_list(table) == dict.from_list(my_table)
 }
 
 pub fn sandbox_test() {
