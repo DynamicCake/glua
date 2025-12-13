@@ -12,6 +12,19 @@ pub fn main() -> Nil {
   gleeunit.main()
 }
 
+pub fn ref_get_table_item_test() {
+  let assert Ok(#(lua, [res])) =
+    glua.ref_eval(
+      glua.new(),
+      "return { add_one = function(a) return 1 + a end }",
+    )
+  let assert Ok(ref) = glua.ref_get_table_key(lua, res, "add_one")
+  let #(lua, num) = glua.int(lua, 41)
+  let assert Ok(#(_lua, [res])) =
+    glua.call_function(lua, ref, [num], decode.int)
+  assert res == 42
+}
+
 pub fn get_table_test() {
   let lua = glua.new()
   let my_table = [

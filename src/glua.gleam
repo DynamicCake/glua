@@ -378,6 +378,10 @@ pub fn set_lua_paths(
   set(lua, ["package", "path"], paths)
 }
 
+pub fn ref_get_table_key(state lua: Lua, ref ref: ValueRef, path path: String) {
+  do_ref_get_table_key(lua, ref, path)
+}
+
 @external(erlang, "luerl", "decode_list")
 fn decode_list(keys: List(a), lua: Lua) -> List(dynamic.Dynamic)
 
@@ -392,6 +396,13 @@ fn do_get_private(lua: Lua, key: String) -> Result(dynamic.Dynamic, LuaError)
 
 @external(erlang, "glua_ffi", "get_table_keys")
 fn do_ref_get(lua: Lua, keys: List(String)) -> Result(ValueRef, LuaError)
+
+@external(erlang, "glua_ffi", "get_table_key")
+fn do_ref_get_table_key(
+  lua: Lua,
+  table: ValueRef,
+  key: String,
+) -> Result(ValueRef, LuaError)
 
 @external(erlang, "glua_ffi", "set_table_keys")
 fn do_set(lua: Lua, keys: List(String), val: a) -> Result(Lua, LuaError)
