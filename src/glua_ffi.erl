@@ -4,7 +4,37 @@
 
 -export([lua_nil/1, encode/2, sandbox_fun/1, get_table_keys/2, get_table_keys_dec/2,
          get_private/2, set_table_keys/3, load/2, load_file/2, eval/2, eval_dec/2, eval_file/2,
-         eval_file_dec/2, eval_chunk/2, eval_chunk_dec/2, call_function/3, call_function_dec/3, get_table_key/3]).
+         eval_file_dec/2, eval_chunk/2, eval_chunk_dec/2, call_function/3, call_function_dec/3, 
+         get_table_key/3, proplist_to_map/1]).
+
+%% Public API
+proplist_to_map(Term) ->
+    proplist_to_map(Term, #{empty_list_as_map => true}).
+
+proplist_to_map(Term, Opts) when is_list(Term) ->
+    case is_proplist(Term) of
+        true ->
+            maps:from_list([{K, proplist_to_map(V, Opts)} || {K, V} <- Term]);
+        false ->
+            case {Term, maps:get(empty_list_as_map, Opts, false)} of
+                {[], true}  -> #{};                 % optional: treat [] as empty proplist
+                _           -> [proplist_to_map(E, Opts) || E <- Term]
+            end
+    end;
+proplist_to_map(Term, Opts) when is_map(Term) ->
+    maps:from_list([{K, proplist_to_map(V, Opts)} || {K, V} <- maps:to_list(Term)]);
+proplist_to_map(Term, Opts) when is_tuple(Term) ->
+    list_to_tuple([proplist_to_map(E, Opts) || E <- tuple_to_list(Term)]);
+proplist_to_map(Other, _Opts) ->
+    Other.
+
+is_proplist(L) when is_list(L), L =/= [] ->
+    lists:all(fun(E) ->
+        is_tuple(E) andalso tuple_size(E) =:= 2
+    end, L);
+is_proplist(_) ->
+    false.
+
 
 %% helper to convert luerl return values to a format
 %% that is more suitable for use in Gleam code

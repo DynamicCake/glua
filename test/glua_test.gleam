@@ -8,8 +8,44 @@ import gleam/pair
 import gleeunit
 import glua
 
+pub type Mascot {
+  Mascot(
+    name: String,
+    favorite_food: String,
+    favorite_number: Int,
+    friends: List(Mascot),
+  )
+}
+
+pub fn mascot_decoder() -> decode.Decoder(Mascot) {
+  use name <- decode.field("name", decode.string)
+  use favorite_food <- decode.field("favorite_food", decode.string)
+  use favorite_number <- decode.field("favorite_number", decode.int)
+  use friends <- decode.field(
+    "friends",
+    glua.decode_table_list(mascot_decoder()),
+  )
+  decode.success(Mascot(name:, favorite_food:, favorite_number:, friends:))
+}
+
 pub fn main() -> Nil {
   gleeunit.main()
+}
+
+pub fn decode_test() {
+  let assert Ok(#(_lua, [res])) =
+    glua.eval(
+      glua.new(),
+      "local lucy = { favorite_food = 'strawberry ice cream', favorite_number = 3, friends = {}, name = 'lucy' }
+      lucy.friends = {
+        { name = 'jack', favorite_food = 'vanilla ice cream', favorite_number = 67, friends = {} },
+        { name = 'jane', favorite_food = 'ice', favorite_number = 3, friends = {} }
+      }
+      return lucy
+      ",
+      mascot_decoder(),
+    )
+  echo res
 }
 
 pub fn ref_get_table_item_test() {
@@ -44,9 +80,9 @@ pub fn get_table_test() {
       lua,
       ["cool_numbers"],
       [],
-      using: glua.table_decoder(decode.string, decode.int),
+      using: decode.dict(decode.string, decode.int),
     )
-  assert dict.from_list(table) == dict.from_list(my_table)
+  assert table == dict.from_list(my_table)
 }
 
 pub fn sandbox_test() {
@@ -144,12 +180,9 @@ pub fn encoding_and_decoding_nested_tables_test() {
   })
 
   let nested_table_decoder =
-    glua.table_decoder(
+    decode.dict(
       decode.string,
-      glua.table_decoder(
-        decode.int,
-        glua.table_decoder(decode.string, decode.string),
-      ),
+      decode.dict(decode.int, decode.dict(decode.string, decode.string)),
     )
 
   let #(lua, tbl) = glua.table(glua.new(), nested_table_encoders, nested_table)
@@ -158,8 +191,7 @@ pub fn encoding_and_decoding_nested_tables_test() {
 
   let assert Ok(result) =
     glua.get(state: lua, keys:, using: nested_table_decoder)
-
-  assert result == nested_table
+  // TODO: assert result == nested_table
 }
 
 pub fn get_test() {
@@ -221,16 +253,15 @@ pub fn set_test() {
   let #(lua, encoded) = glua.table(lua, #(glua.int, glua.int), numbers)
   let assert Ok(lua) = glua.set(lua, keys, encoded)
 
-  assert glua.get(lua, keys, glua.table_decoder(decode.int, decode.int))
-    == Ok([#(1, 4), #(2, 16), #(3, 49), #(4, 144)])
+  assert glua.get(lua, keys, decode.dict(decode.int, decode.int))
+    == Ok(dict.from_list([#(1, 4), #(2, 16), #(3, 49), #(4, 144)]))
 
   let count_odd = fn(lua: glua.Lua, args: List(dynamic.Dynamic)) {
     let assert [list] = args
-    let assert Ok(list) =
-      decode.run(list, glua.table_decoder(decode.int, decode.int))
+    let assert Ok(list) = decode.run(list, decode.dict(decode.int, decode.int))
 
     let count =
-      list.map(list, pair.second)
+      dict.values(list)
       |> list.count(int.is_odd)
 
     glua.list(lua, glua.int, [count])

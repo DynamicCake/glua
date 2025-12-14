@@ -2,9 +2,12 @@
 ////
 //// Gleam wrapper around [Luerl](https://github.com/rvirding/luerl).
 
+import gleam/dict
 import gleam/dynamic
 import gleam/dynamic/decode
+import gleam/int
 import gleam/list
+import gleam/order
 import gleam/pair
 import gleam/result
 import gleam/string
@@ -55,6 +58,66 @@ pub type Value
 /// that will return references to the values instead of decoding them.
 pub type ValueRef
 
+fn decode_pair() {
+  use a <- decode.field(0, decode.dynamic)
+  use b <- decode.field(1, decode.dynamic)
+  decode.success(#(a, b))
+}
+
+/// Transforms a lua table to be more decode-friendly
+pub fn process(table: ValueRef) -> dynamic.Dynamic {
+  let val = decode(table)
+  case decode.run(val, decode.list(decode_pair())) {
+    Ok(table) -> {
+      // figure out if it's a map or a list
+      todo
+    }
+    Error(_) -> todo
+  }
+  val
+}
+
+/// Only pure lists work
+/// Assumes empty tables are empty lists
+pub fn table_to_list(dict: dict.Dict(Int, a)) -> Result(List(a), Nil) {
+  let indexes =
+    list.sort(dict.keys(dict), fn(a, b) { int.compare(a, b) |> order.negate })
+
+  // list.fold_until's function is unreachable if indexes is empty
+  let first = result.unwrap(list.first(indexes), -42)
+  let #(_count, out, ok) =
+    list.fold_until(indexes, #(first, [], True), fn(acc, idx) {
+      let #(count, out, _ok) = acc
+      case idx == count {
+        True -> {
+          let assert Ok(this) = dict.get(dict, idx)
+          list.Continue(#(idx - 1, list.prepend(out, this), True))
+        }
+        False -> list.Stop(#(idx, out, False))
+      }
+    })
+
+  case ok {
+    True -> Ok(out)
+    False -> Error(Nil)
+  }
+}
+
+pub fn decode_table_list(decoder: decode.Decoder(a)) -> decode.Decoder(List(a)) {
+  use list <- decode.then(decode.dict(decode.int, decoder))
+  case table_to_list(list) {
+    Ok(list) -> decode.success(list)
+    Error(Nil) -> decode.failure([], "Table List")
+  }
+}
+
+@external(erlang, "glua_ffi", "decode")
+fn decode(ref: ValueRef) -> dynamic.Dynamic
+
+/// When there is a proplist, it converts it recursively
+@external(erlang, "glua_ffi", "proplist_to_map")
+pub fn proplist_to_map(a: dynamic.Dynamic) -> dynamic.Dynamic
+
 @external(erlang, "glua_ffi", "lua_nil")
 pub fn nil(lua: Lua) -> #(Lua, Value)
 
@@ -90,25 +153,14 @@ pub fn table(
   encode(lua, values)
 }
 
-pub fn table_decoder(
-  keys_decoder: decode.Decoder(a),
-  values_decoder: decode.Decoder(b),
-) -> decode.Decoder(List(#(a, b))) {
-  let inner = {
-    use key <- decode.field(0, keys_decoder)
-    use val <- decode.field(1, values_decoder)
-    decode.success(#(key, val))
-  }
-
-  decode.list(of: inner)
-}
-
 pub fn function(
   lua: Lua,
   f: fn(Lua, List(dynamic.Dynamic)) -> #(Lua, List(Value)),
 ) -> #(Lua, Value) {
   // wrapper to satisfy luerl's order of arguments and return value
-  let fun = fn(args, lua) { f(lua, decode_list(args, lua)) |> pair.swap }
+  let fun = fn(args, lua) {
+    f(lua, list.map(decode_list(args, lua), proplist_to_map)) |> pair.swap
+  }
 
   encode(lua, fun)
 }
@@ -223,7 +275,7 @@ pub fn get(
   use value <- result.try(do_get(lua, keys))
 
   use decoded <- result.try(
-    decode.run(value, decoder) |> result.map_error(UnexpectedResultType),
+    decode_run(value, decoder) |> result.map_error(UnexpectedResultType),
   )
 
   Ok(decoded)
@@ -246,7 +298,7 @@ pub fn get_private(
 ) -> Result(a, LuaError) {
   use value <- result.try(do_get_private(lua, key))
   use decoded <- result.try(
-    decode.run(value, decoder) |> result.map_error(UnexpectedResultType),
+    decode_run(value, decoder) |> result.map_error(UnexpectedResultType),
   )
 
   Ok(decoded)
@@ -506,11 +558,19 @@ pub fn eval(
 ) -> Result(#(Lua, List(a)), LuaError) {
   use #(lua, ret) <- result.try(do_eval(lua, code))
   use decoded <- result.try(
-    list.try_map(ret, decode.run(_, decoder))
+    list.try_map(ret, decode_run(_, decoder))
     |> result.map_error(UnexpectedResultType),
   )
 
   Ok(#(lua, decoded))
+}
+
+fn decode_run(
+  dyn: dynamic.Dynamic,
+  decoder: decode.Decoder(a),
+) -> Result(a, List(decode.DecodeError)) {
+  let dyn = proplist_to_map(dyn)
+  decode.run(dyn, decoder)
 }
 
 @external(erlang, "glua_ffi", "eval_dec")
@@ -557,7 +617,7 @@ pub fn eval_chunk(
 ) -> Result(#(Lua, List(a)), LuaError) {
   use #(lua, ret) <- result.try(do_eval_chunk(lua, chunk))
   use decoded <- result.try(
-    list.try_map(ret, decode.run(_, decoder))
+    list.try_map(ret, decode_run(_, decoder))
     |> result.map_error(UnexpectedResultType),
   )
 
@@ -603,7 +663,7 @@ pub fn eval_file(
 ) -> Result(#(Lua, List(a)), LuaError) {
   use #(lua, ret) <- result.try(do_eval_file(lua, path))
   use decoded <- result.try(
-    list.try_map(ret, decode.run(_, decoder))
+    list.try_map(ret, decode_run(_, decoder))
     |> result.map_error(UnexpectedResultType),
   )
 
@@ -678,7 +738,7 @@ pub fn call_function(
 ) -> Result(#(Lua, List(a)), LuaError) {
   use #(lua, ret) <- result.try(do_call_function(lua, fun, args))
   use decoded <- result.try(
-    list.try_map(ret, decode.run(_, decoder))
+    list.try_map(ret, decode_run(_, decoder))
     |> result.map_error(UnexpectedResultType),
   )
 
