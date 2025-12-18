@@ -2,7 +2,7 @@
 
 -import(luerl_lib, [lua_error/2]).
 
--export([lua_nil/1, encode/2, sandbox_fun/1, get_table_keys/2, get_table_keys_dec/2,
+-export([coerce/1, coerce_nil/0, wrap_fun/1, sandbox_fun/1, get_table_keys/2, get_table_keys_dec/2,
          get_private/2, set_table_keys/3, load/2, load_file/2, eval/2, eval_dec/2, eval_file/2,
          eval_file_dec/2, eval_chunk/2, eval_chunk_dec/2, call_function/3, call_function_dec/3]).
 
@@ -21,6 +21,33 @@ to_gleam(Value) ->
         error ->
             {error, unknown_error}
     end.
+
+%% helper to determine if a value is encoded or not
+%% borrowed from https://github.com/tv-labs/lua/blob/main/lib/lua/util.ex#L19-L35
+is_encoded(nil) ->
+    true;
+is_encoded(true) ->
+    true;
+is_encoded(false) ->
+    true;
+is_encoded(Binary) when is_binary(Binary) ->
+    true;
+is_encoded(N) when is_number(N) ->
+    true;
+is_encoded({tref,_}) ->
+    true;
+is_encoded({usrdef,_}) ->
+    true;
+is_encoded({eref,_}) ->
+    true;
+is_encoded({funref,_,_}) ->
+    true;
+is_encoded({erl_func,_}) ->
+    true;
+is_encoded({erl_mfa,_,_,_}) ->
+    true;
+is_encoded(_) ->
+    false.
 
 %% TODO: Improve compiler errors handling and try to detect more errors
 map_error({error, [{_, luerl_parse, Errors} | _], _}) ->
@@ -52,19 +79,18 @@ map_error({lua_error, _, State}) ->
 map_error(_) ->
     unknown_error.
 
-lua_nil(Lua) ->
-    encode(Lua, nil).
+coerce(X) ->
+    X.
 
-encode(Lua, Lst) when is_list(Lst) ->
-    %% calling `luerl:encode/2` here will encode each element 
-    %% inside the list and it can raise if there are elements already encoded
-    %% since we know that all elements were previously encoded,
-    %% we instead skip the encoding step and manually allocate the table
-    {T, State} = luerl_heap:alloc_table(Lst, Lua),
-    {State, T};
-encode(Lua, Value) ->
-    {Encoded, State} = luerl:encode(Value, Lua),
-    {State, Encoded}.
+coerce_nil() ->
+    nil.
+
+wrap_fun(Fun) ->
+    fun(Args, State) ->
+            Decoded = luerl:decode_list(Args, State),
+            {NewState, Ret} = Fun(State, Decoded),
+            luerl:encode_list(Ret, NewState)
+    end.
 
 sandbox_fun(Msg) ->
     fun(_, State) -> {error, map_error(lua_error({error_call, [Msg]}, State))} end.
@@ -90,7 +116,11 @@ get_table_keys_dec(Lua, Keys) ->
     end.
 
 set_table_keys(Lua, Keys, Value) ->
-    to_gleam(luerl:set_table_keys(Keys, Value, Lua)).
+    SetFun = case is_encoded(Value) of
+                 true -> fun luerl:set_table_keys/3;
+                 false -> fun luerl:set_table_keys_dec/3
+             end,
+    to_gleam(SetFun(Keys, Value, Lua)).
 
 load(Lua, Code) ->
     to_gleam(luerl:load(
@@ -123,13 +153,15 @@ eval_file_dec(Lua, Path) ->
                  unicode:characters_to_list(Path), Lua)).
 
 call_function(Lua, Fun, Args) ->
-    to_gleam(luerl:call(Fun, Args, Lua)).
+    {EncodedArgs, State} = luerl:encode_list(Args, Lua),
+    to_gleam(luerl:call(Fun, EncodedArgs, State)).
 
 call_function_dec(Lua, Fun, Args) ->
-    case luerl:call(Fun, Args, Lua) of
-        {ok, Ret, State} ->
-            Values = luerl:decode_list(Ret, State),
-            {ok, {State, Values}};
+    {EncodedArgs, St1} = luerl:encode_list(Args, Lua),
+    case luerl:call(Fun, EncodedArgs, St1) of
+        {ok, Ret, St2} ->
+            Values = luerl:decode_list(Ret, St2),
+            {ok, {St2, Values}};
         Other ->
             to_gleam(Other)
     end.
