@@ -5,7 +5,6 @@
 import gleam/dynamic
 import gleam/dynamic/decode
 import gleam/list
-import gleam/pair
 import gleam/result
 import gleam/string
 
@@ -55,40 +54,23 @@ pub type Value
 /// that will return references to the values instead of decoding them.
 pub type ValueRef
 
-@external(erlang, "glua_ffi", "lua_nil")
-pub fn nil(lua: Lua) -> #(Lua, Value)
+@external(erlang, "glua_ffi", "coerce_nil")
+pub fn nil() -> Value
 
-pub fn string(lua: Lua, v: String) -> #(Lua, Value) {
-  encode(lua, v)
-}
+@external(erlang, "glua_ffi", "coerce")
+pub fn string(v: String) -> Value
 
-pub fn bool(lua: Lua, v: Bool) -> #(Lua, Value) {
-  encode(lua, v)
-}
+@external(erlang, "glua_ffi", "coerce")
+pub fn bool(v: Bool) -> Value
 
-pub fn int(lua: Lua, v: Int) -> #(Lua, Value) {
-  encode(lua, v)
-}
+@external(erlang, "glua_ffi", "coerce")
+pub fn int(v: Int) -> Value
 
-pub fn float(lua: Lua, v: Float) -> #(Lua, Value) {
-  encode(lua, v)
-}
+@external(erlang, "glua_ffi", "coerce")
+pub fn float(v: Float) -> Value
 
-pub fn table(
-  lua: Lua,
-  encoders: #(fn(Lua, a) -> #(Lua, Value), fn(Lua, b) -> #(Lua, Value)),
-  values: List(#(a, b)),
-) -> #(Lua, Value) {
-  let #(key_encoder, value_encoder) = encoders
-  let #(lua, values) =
-    list.map_fold(values, lua, fn(lua, pair) {
-      let #(lua, k) = key_encoder(lua, pair.0)
-      let #(lua, v) = value_encoder(lua, pair.1)
-      #(lua, #(k, v))
-    })
-
-  encode(lua, values)
-}
+@external(erlang, "glua_ffi", "coerce")
+pub fn table(values: List(#(Value, Value))) -> Value
 
 pub fn table_decoder(
   keys_decoder: decode.Decoder(a),
@@ -104,25 +86,20 @@ pub fn table_decoder(
 }
 
 pub fn function(
-  lua: Lua,
   f: fn(Lua, List(dynamic.Dynamic)) -> #(Lua, List(Value)),
-) -> #(Lua, Value) {
-  // wrapper to satisfy luerl's order of arguments and return value
-  let fun = fn(args, lua) { f(lua, decode_list(args, lua)) |> pair.swap }
-
-  encode(lua, fun)
+) -> Value {
+  // we need a little wrapper for functions to satisfy luerl's order of arguments and return value type
+  wrap_function(f)
 }
 
-pub fn list(
-  lua: Lua,
-  encoder: fn(Lua, a) -> #(Lua, Value),
-  values: List(a),
-) -> #(Lua, List(Value)) {
-  list.map_fold(values, lua, encoder)
+pub fn list(encoder: fn(a) -> Value, values: List(a)) -> List(Value) {
+  list.map(values, encoder)
 }
 
-@external(erlang, "glua_ffi", "encode")
-fn encode(lua: Lua, v: anything) -> #(Lua, Value)
+@external(erlang, "glua_ffi", "wrap_fun")
+fn wrap_function(
+  fun: fn(Lua, List(dynamic.Dynamic)) -> #(Lua, List(Value)),
+) -> Value
 
 /// Creates a new Lua VM instance
 @external(erlang, "luerl", "init")
@@ -179,8 +156,7 @@ fn list_substraction(a: List(a), b: List(a)) -> List(a)
 /// ```
 pub fn sandbox(state lua: Lua, keys keys: List(String)) -> Result(Lua, LuaError) {
   let msg = string.join(keys, with: ".") <> " is sandboxed"
-  let #(lua, fun) = encode(lua, sandbox_fun(msg))
-  set(lua, ["_G", ..keys], fun)
+  set(lua, ["_G", ..keys], sandbox_fun(msg))
 }
 
 @external(erlang, "glua_ffi", "sandbox_fun")
@@ -374,12 +350,9 @@ pub fn set_lua_paths(
   state lua: Lua,
   paths paths: List(String),
 ) -> Result(Lua, LuaError) {
-  let #(lua, paths) = string(lua, string.join(paths, with: ";"))
+  let paths = string.join(paths, with: ";") |> string
   set(lua, ["package", "path"], paths)
 }
-
-@external(erlang, "luerl", "decode_list")
-fn decode_list(keys: List(a), lua: Lua) -> List(dynamic.Dynamic)
 
 @external(erlang, "luerl_emul", "alloc_table")
 fn alloc_table(content: List(a), lua: Lua) -> #(a, Lua)

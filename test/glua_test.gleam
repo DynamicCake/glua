@@ -19,9 +19,13 @@ pub fn get_table_test() {
     #("pi", 3),
     #("euler's number", 3),
   ]
-  let #(lua, cool_numbers) =
-    glua.function(lua, fn(lua, _params) {
-      let #(lua, table) = glua.table(lua, #(glua.string, glua.int), my_table)
+  let cool_numbers =
+    glua.function(fn(lua, _params) {
+      let table =
+        glua.table(
+          my_table
+          |> list.map(fn(pair) { #(glua.string(pair.0), glua.int(pair.1)) }),
+        )
       #(lua, [table])
     })
 
@@ -33,12 +37,13 @@ pub fn get_table_test() {
       [],
       using: glua.table_decoder(decode.string, decode.int),
     )
+
   assert dict.from_list(table) == dict.from_list(my_table)
 }
 
 pub fn sandbox_test() {
   let assert Ok(lua) = glua.sandbox(glua.new(), ["math", "max"])
-  let #(lua, args) = glua.list(lua, glua.int, [20, 10])
+  let args = list.map([20, 10], glua.int)
 
   let assert Error(glua.LuaRuntimeException(exception, _)) =
     glua.call_function_by_name(
@@ -72,7 +77,7 @@ pub fn sandbox_test() {
   assert exception == glua.ErrorCall(["os.execute is sandboxed"])
 
   let assert Ok(lua) = glua.sandbox(glua.new(), ["print"])
-  let #(lua, arg) = glua.string(lua, "sandbox test is failing")
+  let arg = glua.string("sandbox test is failing")
   let assert Error(glua.LuaRuntimeException(exception, _)) =
     glua.call_function_by_name(
       state: lua,
@@ -92,7 +97,7 @@ pub fn new_sandboxed_test() {
 
   assert exception == glua.ErrorCall(["load is sandboxed"])
 
-  let #(lua, arg) = glua.int(lua, 1)
+  let arg = glua.int(1)
   let assert Error(glua.LuaRuntimeException(exception, _)) =
     glua.ref_call_function_by_name(state: lua, keys: ["os", "exit"], args: [arg])
 
@@ -115,20 +120,18 @@ pub fn new_sandboxed_test() {
 
 pub fn encoding_and_decoding_nested_tables_test() {
   let nested_table = [
-    #("key", [#(1, [#("deeper_key", "deeper_value")])]),
+    #(
+      glua.string("key"),
+      glua.table([
+        #(
+          glua.int(1),
+          glua.table([#(glua.string("deeper_key"), glua.string("deeper_value"))]),
+        ),
+      ]),
+    ),
   ]
 
   let keys = ["my_nested_table"]
-
-  let nested_table_encoders = #(glua.string, fn(lua, tbl) {
-    glua.table(
-      lua,
-      #(glua.int, fn(lua, tbl) {
-        glua.table(lua, #(glua.string, glua.string), tbl)
-      }),
-      tbl,
-    )
-  })
 
   let nested_table_decoder =
     glua.table_decoder(
@@ -138,15 +141,14 @@ pub fn encoding_and_decoding_nested_tables_test() {
         glua.table_decoder(decode.string, decode.string),
       ),
     )
+  let tbl = glua.table(nested_table)
 
-  let #(lua, tbl) = glua.table(glua.new(), nested_table_encoders, nested_table)
-
-  let assert Ok(lua) = glua.set(state: lua, keys:, value: tbl)
+  let assert Ok(lua) = glua.set(state: glua.new(), keys:, value: tbl)
 
   let assert Ok(result) =
     glua.get(state: lua, keys:, using: nested_table_decoder)
 
-  assert result == nested_table
+  assert result == [#("key", [#(1, [#("deeper_key", "deeper_value")])])]
 }
 
 pub fn get_test() {
@@ -158,7 +160,7 @@ pub fn get_test() {
   assert pi >. 3.14 && pi <. 3.15
 
   let keys = ["my_table", "my_value"]
-  let #(state, encoded) = glua.bool(state, True)
+  let encoded = glua.bool(True)
   let assert Ok(state) = glua.set(state:, keys:, value: encoded)
   let assert Ok(ret) = glua.get(state:, keys:, using: decode.bool)
 
@@ -182,7 +184,7 @@ pub fn get_returns_proper_errors_test() {
   assert glua.get(state:, keys: ["non_existent_global"], using: decode.string)
     == Error(glua.KeyNotFound)
 
-  let #(state, encoded) = glua.int(state, 10)
+  let encoded = glua.int(10)
   let assert Ok(state) =
     glua.set(state:, keys: ["my_table", "some_value"], value: encoded)
 
@@ -191,9 +193,10 @@ pub fn get_returns_proper_errors_test() {
 }
 
 pub fn set_test() {
-  let #(lua, encoded) = glua.string(glua.new(), "custom version")
+  let encoded = glua.string("custom version")
 
-  let assert Ok(lua) = glua.set(state: lua, keys: ["_VERSION"], value: encoded)
+  let assert Ok(lua) =
+    glua.set(state: glua.new(), keys: ["_VERSION"], value: encoded)
   let assert Ok(result) =
     glua.get(state: lua, keys: ["_VERSION"], using: decode.string)
 
@@ -205,7 +208,10 @@ pub fn set_test() {
 
   let keys = ["math", "squares"]
 
-  let #(lua, encoded) = glua.table(lua, #(glua.int, glua.int), numbers)
+  let encoded =
+    glua.table(
+      numbers |> list.map(fn(pair) { #(glua.int(pair.0), glua.int(pair.1)) }),
+    )
   let assert Ok(lua) = glua.set(lua, keys, encoded)
 
   assert glua.get(lua, keys, glua.table_decoder(decode.int, decode.int))
@@ -220,17 +226,17 @@ pub fn set_test() {
       list.map(list, pair.second)
       |> list.count(int.is_odd)
 
-    glua.list(lua, glua.int, [count])
+    #(lua, list.map([count], glua.int))
   }
 
-  let #(lua, encoded) = glua.function(glua.new(), count_odd)
-  let assert Ok(lua) = glua.set(lua, ["count_odd"], encoded)
+  let encoded = glua.function(count_odd)
+  let assert Ok(lua) = glua.set(glua.new(), ["count_odd"], encoded)
 
-  let #(lua, arg) =
+  let arg =
     glua.table(
-      lua,
-      #(glua.int, glua.int),
-      list.index_map(list.range(1, 10), fn(i, n) { #(i + 1, n) }),
+      list.index_map(list.range(1, 10), fn(i, n) {
+        #(glua.int(i + 1), glua.int(n))
+      }),
     )
 
   let assert Ok(#(lua, [result])) =
@@ -243,21 +249,27 @@ pub fn set_test() {
 
   assert result == 5
 
-  let #(lua, tbl) =
-    glua.table(lua, #(glua.string, glua.function), [
-      #("is_even", fn(lua, args) {
-        let assert [arg] = args
-        let assert Ok(arg) = decode.run(arg, decode.int)
-        glua.list(lua, glua.bool, [int.is_even(arg)])
-      }),
-      #("is_odd", fn(lua, args) {
-        let assert [arg] = args
-        let assert Ok(arg) = decode.run(arg, decode.int)
-        glua.list(lua, glua.bool, [int.is_odd(arg)])
-      }),
+  let tbl =
+    glua.table([
+      #(
+        glua.string("is_even"),
+        glua.function(fn(lua, args) {
+          let assert [arg] = args
+          let assert Ok(arg) = decode.run(arg, decode.int)
+          #(lua, list.map([int.is_even(arg)], glua.bool))
+        }),
+      ),
+      #(
+        glua.string("is_odd"),
+        glua.function(fn(lua, args) {
+          let assert [arg] = args
+          let assert Ok(arg) = decode.run(arg, decode.int)
+          #(lua, list.map([int.is_odd(arg)], glua.bool))
+        }),
+      ),
     ])
 
-  let #(lua, arg) = glua.int(lua, 4)
+  let arg = glua.int(4)
 
   let assert Ok(lua) = glua.set(state: lua, keys: ["my_functions"], value: tbl)
 
@@ -418,7 +430,7 @@ pub fn call_function_test() {
   let assert Ok(#(lua, [fun])) =
     glua.ref_eval(state: glua.new(), code: "return string.reverse")
 
-  let #(lua, encoded) = glua.string(lua, "auL")
+  let encoded = glua.string("auL")
 
   let assert Ok(#(lua, [result])) =
     glua.call_function(
@@ -433,7 +445,7 @@ pub fn call_function_test() {
   let assert Ok(#(lua, [fun])) =
     glua.ref_eval(state: lua, code: "return function(a, b) return a .. b end")
 
-  let #(lua, args) = glua.list(lua, glua.string, ["Lua in ", "Gleam"])
+  let args = list.map(["Lua in ", "Gleam"], glua.string)
 
   let assert Ok(#(_, [result])) =
     glua.call_function(state: lua, ref: fun, args:, using: decode.string)
@@ -447,7 +459,7 @@ pub fn call_function_returns_proper_errors_test() {
   let assert Ok(#(state, [ref])) =
     glua.ref_eval(state:, code: "return string.upper")
 
-  let #(state, arg) = glua.string(state, "Hello from Gleam!")
+  let arg = glua.string("Hello from Gleam!")
 
   assert glua.call_function(state:, ref:, args: [arg], using: decode.int)
     == Error(
@@ -465,10 +477,10 @@ pub fn call_function_returns_proper_errors_test() {
 }
 
 pub fn call_function_by_name_test() {
-  let #(lua, args) = glua.new() |> glua.list(glua.int, [20, 10])
+  let args = list.map([20, 10], glua.int)
   let assert Ok(#(lua, [result])) =
     glua.call_function_by_name(
-      state: lua,
+      state: glua.new(),
       keys: ["math", "max"],
       args:,
       using: decode.int,
@@ -486,7 +498,7 @@ pub fn call_function_by_name_test() {
 
   assert result == 10
 
-  let #(lua, arg) = glua.float(lua, 10.2)
+  let arg = glua.float(10.2)
   let assert Ok(#(_, [result])) =
     glua.call_function_by_name(
       state: lua,
@@ -505,7 +517,7 @@ pub fn nested_function_references_test() {
   let assert Ok(#(lua, [ref])) =
     glua.ref_call_function(state: lua, ref:, args: [])
 
-  let #(lua, arg) = glua.int(lua, 400)
+  let arg = glua.int(400)
   let assert Ok(#(_, [result])) =
     glua.call_function(state: lua, ref:, args: [arg], using: decode.float)
   assert result == 20.0
