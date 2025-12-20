@@ -12,6 +12,22 @@ pub fn main() -> Nil {
   gleeunit.main()
 }
 
+pub fn metatable_test() {
+  let lua = glua.new()
+  let table = glua.table([])
+  let proxy = glua.function(fn(lua, _args) { #(lua, [glua.string("three")]) })
+  let metatable = glua.table([#(glua.string("__index"), proxy)])
+  let assert Ok(#(lua, _)) =
+    glua.ref_call_function_by_name(lua, ["setmetatable"], [table, metatable])
+  let assert Ok(lua) = glua.set(lua, ["number_table"], table)
+  let assert Ok(#(_lua, ["three"])) =
+    glua.eval(
+      lua,
+      "return number_table.itshouldntmatterwhatiputhere",
+      decode.string,
+    )
+}
+
 pub fn get_table_test() {
   let lua = glua.new()
   let my_table = [
