@@ -72,6 +72,16 @@ pub fn float(v: Float) -> Value
 @external(erlang, "glua_ffi", "coerce")
 pub fn table(values: List(#(Value, Value))) -> Value
 
+pub fn alloc_table(lua: Lua, values: List(#(Value, Value))) -> #(Lua, Value) {
+  let #(val, lua) = do_alloc_table(values, lua)
+  #(lua, val)
+}
+
+pub fn alloc_userdata(lua: Lua, a: anything) -> #(Lua, Value) {
+  let #(val, lua) = do_alloc_userdata(a, lua)
+  #(lua, val)
+}
+
 pub fn table_decoder(
   keys_decoder: decode.Decoder(a),
   values_decoder: decode.Decoder(b),
@@ -333,7 +343,7 @@ pub fn set(
       Ok(_) -> Ok(#(keys, lua))
 
       Error(KeyNotFound) -> {
-        let #(tbl, lua) = alloc_table([], lua)
+        let #(tbl, lua) = do_alloc_table([], lua)
         do_set(lua, keys, tbl)
         |> result.map(fn(lua) { #(keys, lua) })
       }
@@ -400,8 +410,11 @@ pub fn set_lua_paths(
   set(lua, ["package", "path"], paths)
 }
 
-@external(erlang, "luerl_emul", "alloc_table")
-fn alloc_table(content: List(a), lua: Lua) -> #(a, Lua)
+@external(erlang, "luerl_heap", "alloc_table")
+fn do_alloc_table(content: List(a), lua: Lua) -> #(Value, Lua)
+
+@external(erlang, "luerl_heap", "alloc_userdata")
+fn do_alloc_userdata(a: anything, lua: Lua) -> #(Value, Lua)
 
 @external(erlang, "glua_ffi", "get_table_keys_dec")
 fn do_get(lua: Lua, keys: List(String)) -> Result(dynamic.Dynamic, LuaError)
