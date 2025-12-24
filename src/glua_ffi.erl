@@ -5,7 +5,32 @@
 -export([coerce/1, coerce_nil/0, coerce_userdata/1, wrap_fun/1, sandbox_fun/1, get_table_keys/2, get_table_keys_dec/2,
          get_private/2, set_table_keys/3, load/2, load_file/2, eval/2, eval_dec/2, eval_file/2,
          eval_file_dec/2, eval_chunk/2, eval_chunk_dec/2, call_function/3, call_function_dec/3,
-         alloc/2]).
+         alloc/2, proplist_to_map/1]).
+
+% This could be improved on perhaps
+proplist_to_map(Term) when is_list(Term) ->
+    case is_proplist(Term) of
+        true ->
+            maps:from_list([{K, proplist_to_map(V)} || {K, V} <- Term]);
+        false ->
+            case Term of
+                [] -> #{};
+                _  -> [proplist_to_map(E) || E <- Term]
+            end
+    end;
+proplist_to_map(Term) when is_map(Term) ->
+    maps:from_list([{K, proplist_to_map(V)} || {K, V} <- maps:to_list(Term)]);
+proplist_to_map(Term) when is_tuple(Term) ->
+    list_to_tuple([proplist_to_map(E) || E <- tuple_to_list(Term)]);
+proplist_to_map(Other) ->
+    Other.
+
+is_proplist(L) when is_list(L), L =/= [] ->
+    lists:all(fun(E) ->
+        is_tuple(E) andalso tuple_size(E) =:= 2
+    end, L);
+is_proplist(_) ->
+    false.
 
 %% turn `{userdata, Data}` into `Data` to make it more easy to decode it in Gleam
 maybe_process_userdata(Lst) when is_list(Lst) ->

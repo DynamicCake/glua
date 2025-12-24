@@ -172,14 +172,39 @@ fn do_decode_list(ref: List(ValueRef), lua: Lua) -> List(dynamic.Dynamic)
 @external(erlang, "luerl", "decode")
 fn do_decode(ref: ValueRef, lua: Lua) -> dynamic.Dynamic
 
+@external(erlang, "glua_ffi", "proplist_to_map")
+fn proplist_to_map(a: anything) -> dynamic.Dynamic
+
+pub type Transformation {
+  NoTransform
+  /// Default
+  ProplistTransform
+}
+
 /// The decoder will always receive a list of values
 pub fn dec(
   output: Result(Output, LuaError),
   using decoder: decode.Decoder(a),
 ) -> Result(#(Lua, a), LuaError) {
+  dec_transform(output, decoder, ProplistTransform)
+}
+
+pub fn dec_transform(
+  output: Result(Output, LuaError),
+  using decoder: decode.Decoder(a),
+  transformation tf: Transformation,
+) {
   use output <- result.try(output)
-  do_decode_list(output.refs, output.lua)
-  |> dynamic.list()
+  let dyn =
+    do_decode_list(output.refs, output.lua)
+    |> dynamic.list()
+
+  let dyn = case tf {
+    NoTransform -> dyn
+    ProplistTransform -> proplist_to_map(dyn)
+  }
+
+  dyn
   |> decode.run(decoder)
   |> result.map(pair.new(output.lua, _))
   |> result.map_error(UnexpectedResultType)
@@ -190,16 +215,23 @@ pub fn dec_one(
   output: Result(Output, LuaError),
   using decoder: decode.Decoder(a),
 ) -> Result(#(Lua, a), LuaError) {
-  use output <- result.try(output)
+  dec_one_transform(output, decoder, ProplistTransform)
+}
 
-  do_decode_list(output.refs, output.lua)
-  |> dynamic.list()
-  |> decode.run({
-    use it <- decode.field(0, decoder)
-    decode.success(it)
-  })
-  |> result.map(pair.new(output.lua, _))
-  |> result.map_error(UnexpectedResultType)
+/// Assume there will be only one item to decode
+pub fn dec_one_transform(
+  output: Result(Output, LuaError),
+  using decoder: decode.Decoder(a),
+  transformation tf: Transformation,
+) -> Result(#(Lua, a), LuaError) {
+  dec_transform(
+    output,
+    {
+      use it <- decode.field(0, decoder)
+      decode.success(it)
+    },
+    tf,
+  )
 }
 
 /// GetOuput decoder

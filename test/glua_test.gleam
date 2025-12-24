@@ -33,7 +33,10 @@ pub fn get_table_test() {
   let assert Ok(lua) = glua.set(lua, ["cool_numbers"], cool_numbers)
   let assert Ok(#(_lua, table)) =
     glua.call_function_by_name(lua, ["cool_numbers"], [])
-    |> glua.dec_one(using: glua.table_decoder(decode.string, decode.int))
+    |> glua.dec_one_transform(
+      using: glua.table_decoder(decode.string, decode.int),
+      transformation: glua.NoTransform,
+    )
 
   assert dict.from_list(table) == dict.from_list(my_table)
 }
@@ -159,7 +162,7 @@ pub fn userdata_test() {
   let assert Ok(lua) = glua.set(lua, ["my_userdata"], glua.userdata(userdata))
   let assert Ok(#(lua, result)) =
     glua.eval(lua, "return my_userdata")
-    |> glua.dec_one(userdata_decoder)
+    |> glua.dec_one_transform(userdata_decoder, glua.NoTransform)
 
   assert result == userdata
 
