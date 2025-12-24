@@ -86,33 +86,51 @@ pub fn float(v: Float) -> Value
 pub fn table(values: List(#(Value, Value))) -> Value
 
 /// Only pure lists work
-/// Assumes empty tables are empty lists
 pub fn table_to_list(dict: dict.Dict(Int, a)) -> Result(List(a), Nil) {
+  use <- bool.guard(dict.is_empty(dict), Ok([]))
   let indexes =
     list.sort(dict.keys(dict), fn(a, b) { int.compare(a, b) |> order.negate })
+  use state <- result.try(inner_t2l(dict, indexes, FirstT2LState))
+  let assert TableToListState(prev, out) = state
+  use <- bool.guard(prev != 1, Error(Nil))
+  Ok(out)
+}
 
-  // do not access `count` if `ok` is not True
-  let first = result.unwrap(list.first(indexes), -42)
-  let #(count, out, ok) =
-    list.fold_until(indexes, #(first, [], True), fn(acc, idx) {
-      let #(count, out, _ok) = acc
-      case idx == count {
-        True -> {
-          use <- bool.guard(idx <= 0, list.Stop(#(idx, out, False)))
-          let assert Ok(this) = dict.get(dict, idx)
-          list.Continue(#(idx - 1, list.prepend(out, this), True))
-        }
-        False -> list.Stop(#(idx, out, False))
-      }
-    })
+pub type TableToListState(a) {
+  FirstT2LState
+  TableToListState(prev: Int, out: List(a))
+}
 
-  case ok {
-    True ->
-      case count != 1 {
-        True -> Ok(out)
-        False -> Error(Nil)
+/// Pre-conditions
+/// 1. `items` cannot be empty
+/// 2. `items` must be sorted in reverse int order
+/// 3. `items` must contain and only contain the keys of `dict`
+/// 4. During first call to function, `state` must be FirstTableToListState
+fn inner_t2l(
+  dict: dict.Dict(Int, a),
+  items: List(Int),
+  state: TableToListState(a),
+) -> Result(TableToListState(a), Nil) {
+  case items {
+    [idx, ..other] -> {
+      let assert Ok(item) = dict.get(dict, idx)
+      case state {
+        FirstT2LState ->
+          inner_t2l(dict, other, TableToListState(prev: idx, out: [item]))
+        TableToListState(prev:, out:) ->
+          case idx == prev - 1 {
+            True -> {
+              inner_t2l(
+                dict,
+                other,
+                TableToListState(prev: idx, out: [item, ..out]),
+              )
+            }
+            False -> Error(Nil)
+          }
       }
-    False -> Error(Nil)
+    }
+    [] -> Ok(state)
   }
 }
 

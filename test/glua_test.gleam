@@ -570,6 +570,9 @@ pub fn alloc_test() {
 }
 
 pub fn table_to_list_test() {
+  assert glua.table_to_list(dict.from_list([#(12_812_074, "not a list item")]))
+    == Error(Nil)
+
   assert glua.table_to_list(dict.new()) == Ok([])
 
   let table_list =
