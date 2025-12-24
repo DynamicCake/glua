@@ -2,9 +2,13 @@
 ////
 //// Gleam wrapper around [Luerl](https://github.com/rvirding/luerl).
 
+import gleam/bool
+import gleam/dict
 import gleam/dynamic
 import gleam/dynamic/decode
+import gleam/int
 import gleam/list
+import gleam/order
 import gleam/pair
 import gleam/result
 import gleam/string
@@ -80,6 +84,45 @@ pub fn float(v: Float) -> Value
 
 @external(erlang, "glua_ffi", "coerce")
 pub fn table(values: List(#(Value, Value))) -> Value
+
+/// Only pure lists work
+/// Assumes empty tables are empty lists
+pub fn table_to_list(dict: dict.Dict(Int, a)) -> Result(List(a), Nil) {
+  let indexes =
+    list.sort(dict.keys(dict), fn(a, b) { int.compare(a, b) |> order.negate })
+
+  // do not access `count` if `ok` is not True
+  let first = result.unwrap(list.first(indexes), -42)
+  let #(count, out, ok) =
+    list.fold_until(indexes, #(first, [], True), fn(acc, idx) {
+      let #(count, out, _ok) = acc
+      case idx == count {
+        True -> {
+          use <- bool.guard(idx <= 0, list.Stop(#(idx, out, False)))
+          let assert Ok(this) = dict.get(dict, idx)
+          list.Continue(#(idx - 1, list.prepend(out, this), True))
+        }
+        False -> list.Stop(#(idx, out, False))
+      }
+    })
+
+  case ok {
+    True ->
+      case count != 1 {
+        True -> Ok(out)
+        False -> Error(Nil)
+      }
+    False -> Error(Nil)
+  }
+}
+
+pub fn decode_table_list(decoder: decode.Decoder(a)) -> decode.Decoder(List(a)) {
+  use list <- decode.then(decode.dict(decode.int, decoder))
+  case table_to_list(list) {
+    Ok(list) -> decode.success(list)
+    Error(Nil) -> decode.failure([], "Table List")
+  }
+}
 
 pub fn alloc_table(lua: Lua, values: List(#(Value, Value))) -> #(Lua, Value) {
   let #(val, lua) = do_alloc_table(values, lua)

@@ -568,3 +568,28 @@ pub fn alloc_test() {
   assert ret1 == "constant"
   assert ret2 == "constant"
 }
+
+pub fn table_to_list_test() {
+  assert glua.table_to_list(dict.new()) == Ok([])
+
+  let table_list =
+    dict.from_list([
+      #(2, "second"),
+      #(1, "first"),
+      #(3, "third"),
+      #(4, "fourth"),
+    ])
+  let assert Ok(["first", "second", "third", "fourth"]) =
+    glua.table_to_list(table_list)
+
+  let gap_table_list = dict.insert(table_list, 6, "sixth")
+  let assert Error(Nil) = glua.table_to_list(gap_table_list)
+
+  let floating_table_list = dict.delete(table_list, 1)
+  let assert Error(Nil) = glua.table_to_list(floating_table_list)
+
+  let negative_table_list =
+    dict.insert(table_list, 0, "zeroth") |> dict.insert(-1, "negativefirst")
+
+  let assert Error(Nil) = glua.table_to_list(negative_table_list)
+}
