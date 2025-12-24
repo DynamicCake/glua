@@ -266,7 +266,7 @@ pub fn set_test() {
     #(lua, list.map([count], glua.int))
   }
 
-  let encoded = glua.function(count_odd)
+  let encoded = glua.function_transform(count_odd, glua.NoTransform)
   let assert Ok(lua) = glua.set(glua.new(), ["count_odd"], encoded)
 
   let arg =

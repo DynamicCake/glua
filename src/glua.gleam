@@ -151,7 +151,18 @@ pub fn function(
   f: fn(Lua, List(dynamic.Dynamic)) -> #(Lua, List(Value)),
 ) -> Value {
   // we need a little wrapper for functions to satisfy luerl's order of arguments and return value type
-  wrap_function(f)
+  wrap_trans_function(f)
+}
+
+pub fn function_transform(
+  f: fn(Lua, List(dynamic.Dynamic)) -> #(Lua, List(Value)),
+  transformation: Transformation,
+) -> Value {
+  case transformation {
+    NoTransform -> wrap_function(f)
+    ProplistTransform -> wrap_trans_function(f)
+  }
+  // we need a little wrapper for functions to satisfy luerl's order of arguments and return value type
 }
 
 pub fn list(encoder: fn(a) -> Value, values: List(a)) -> List(Value) {
@@ -206,6 +217,11 @@ pub fn userdata(v: anything) -> Value
 
 @external(erlang, "glua_ffi", "wrap_fun")
 fn wrap_function(
+  fun: fn(Lua, List(dynamic.Dynamic)) -> #(Lua, List(Value)),
+) -> Value
+
+@external(erlang, "glua_ffi", "wrap_trans_fun")
+fn wrap_trans_function(
   fun: fn(Lua, List(dynamic.Dynamic)) -> #(Lua, List(Value)),
 ) -> Value
 

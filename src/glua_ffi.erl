@@ -2,10 +2,10 @@
 
 -import(luerl_lib, [lua_error/2]).
 
--export([coerce/1, coerce_nil/0, coerce_userdata/1, wrap_fun/1, sandbox_fun/1, get_table_keys/2, get_table_keys_dec/2,
-         get_private/2, set_table_keys/3, load/2, load_file/2, eval/2, eval_dec/2, eval_file/2,
-         eval_file_dec/2, eval_chunk/2, eval_chunk_dec/2, call_function/3, call_function_dec/3,
-         alloc/2, proplist_to_map/1]).
+-export([coerce/1, coerce_nil/0, coerce_userdata/1, wrap_fun/1, wrap_trans_fun/1, sandbox_fun/1,
+         get_table_keys/2, get_table_keys_dec/2, get_private/2, set_table_keys/3, load/2,
+         load_file/2, eval/2, eval_dec/2, eval_file/2, eval_file_dec/2, eval_chunk/2, eval_chunk_dec/2,
+         call_function/3, call_function_dec/3, alloc/2, proplist_to_map/1]).
 
 % This could be improved on perhaps
 proplist_to_map(Term) when is_list(Term) ->
@@ -151,6 +151,14 @@ wrap_fun(Fun) ->
     fun(Args, State) ->
             Decoded = luerl:decode_list(Args, State),
             {NewState, Ret} = Fun(State, Decoded),
+            luerl:encode_list(Ret, NewState)
+    end.
+
+wrap_trans_fun(Fun) ->
+    fun(Args, State) ->
+            Decoded = luerl:decode_list(Args, State),
+            Transformed = [proplist_to_map(Arg) || Arg <- Decoded],
+            {NewState, Ret} = Fun(State, Transformed),
             luerl:encode_list(Ret, NewState)
     end.
 
