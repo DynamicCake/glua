@@ -3,9 +3,8 @@
 -import(luerl_lib, [lua_error/2]).
 
 -export([coerce/1, coerce_nil/0, coerce_userdata/1, wrap_fun/1, wrap_trans_fun/1, sandbox_fun/1,
-         get_table_keys/2, get_table_keys_dec/2, get_private/2, set_table_keys/3, load/2,
-         load_file/2, eval/2, eval_dec/2, eval_file/2, eval_file_dec/2, eval_chunk/2, eval_chunk_dec/2,
-         call_function/3, call_function_dec/3, alloc/2, proplist_to_map/1]).
+         get_table_keys/2, get_private/2, set_table_keys/3, load/2, load_file/2, eval/2, eval_file/2,
+         eval_chunk/2, call_function/3, alloc/2, proplist_to_map/1]).
 
 % This could be improved on perhaps
 proplist_to_map(Term) when is_list(Term) ->
@@ -175,16 +174,6 @@ get_table_keys(Lua, Keys) ->
             to_gleam(Other)
     end.
 
-get_table_keys_dec(Lua, Keys) ->
-    case luerl:get_table_keys_dec(Keys, Lua) of
-        {ok, nil, _} ->
-            {error, key_not_found};
-        {ok, Value, _} ->
-            {ok, Value};
-        Other ->
-            to_gleam(Other)
-    end.
-
 set_table_keys(Lua, Keys, Value) ->
     SetFun = case is_encoded(Value) of
                  true -> fun luerl:set_table_keys/3;
@@ -204,37 +193,16 @@ eval(Lua, Code) ->
     to_gleam(luerl:do(
                  unicode:characters_to_list(Code), Lua)).
 
-eval_dec(Lua, Code) ->
-    to_gleam(luerl:do_dec(
-                 unicode:characters_to_list(Code), Lua)).
-
 eval_chunk(Lua, Chunk) ->
     to_gleam(luerl:call_chunk(Chunk, Lua)).
-
-eval_chunk_dec(Lua, Chunk) ->
-    call_function_dec(Lua, Chunk, []).
 
 eval_file(Lua, Path) ->
     to_gleam(luerl:dofile(
                  unicode:characters_to_list(Path), Lua)).
 
-eval_file_dec(Lua, Path) ->
-    to_gleam(luerl:dofile_dec(
-                 unicode:characters_to_list(Path), Lua)).
-
 call_function(Lua, Fun, Args) ->
     {EncodedArgs, State} = encode_list(Args, Lua),
     to_gleam(luerl:call(Fun, EncodedArgs, State)).
-
-call_function_dec(Lua, Fun, Args) ->
-    {EncodedArgs, St1} = encode_list(Args, Lua),
-    case luerl:call(Fun, EncodedArgs, St1) of
-        {ok, Ret, St2} ->
-            Values = luerl:decode_list(Ret, St2),
-            {ok, {St2, Values}};
-        Other ->
-            to_gleam(Other)
-    end.
 
 get_private(Lua, Key) ->
     try
