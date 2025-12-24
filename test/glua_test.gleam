@@ -459,12 +459,9 @@ pub fn eval_returns_proper_errors_test() {
 }
 
 pub fn eval_file_test() {
-  let assert Ok(#(_, [result])) =
-    glua.eval_file(
-      state: glua.new(),
-      path: "./test/lua/example.lua",
-      using: decode.string,
-    )
+  let assert Ok(#(_, result)) =
+    glua.eval_file(state: glua.new(), path: "./test/lua/example.lua")
+    |> glua.dec_one(using: decode.string)
 
   assert result == "LUA IS AN EMBEDDABLE LANGUAGE"
 }

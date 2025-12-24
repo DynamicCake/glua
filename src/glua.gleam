@@ -213,6 +213,10 @@ pub fn gdec(
   |> result.map_error(UnexpectedResultType)
 }
 
+fn to_output(pair: #(Lua, List(ValueRef))) -> Output {
+  Output(lua: pair.0, refs: pair.1)
+}
+
 pub fn output_pair(output: Output) -> #(Lua, List(ValueRef)) {
   #(output.lua, output.refs)
 }
@@ -509,7 +513,7 @@ pub fn eval_chunk(
   chunk chunk: Chunk,
 ) -> Result(Output, LuaError) {
   do_eval_chunk(lua, chunk)
-  |> result.map(fn(pair) { Output(lua: pair.0, refs: pair.1) })
+  |> result.map(to_output)
 }
 
 @external(erlang, "glua_ffi", "eval_chunk")
@@ -518,48 +522,13 @@ fn do_eval_chunk(
   chunk: Chunk,
 ) -> Result(#(Lua, List(ValueRef)), LuaError)
 
-/// Evaluates a Lua source file.
-///
-/// ## Examples
-/// ```gleam
-/// let assert Ok(#(_, results)) = glua.eval_file(
-///   state: glua.new(),
-///   path: "path/to/hello.lua",
-///   using: decode.string
-/// )
-///
-/// assert results == ["hello, world!"]
-/// ```
-pub fn eval_file(
-  state lua: Lua,
-  path path: String,
-  using decoder: decode.Decoder(a),
-) -> Result(#(Lua, List(a)), LuaError) {
-  use #(lua, ret) <- result.try(do_eval_file(lua, path))
-  use decoded <- result.try(
-    list.try_map(ret, decode.run(_, decoder))
-    |> result.map_error(UnexpectedResultType),
-  )
-
-  Ok(#(lua, decoded))
-}
-
-@external(erlang, "glua_ffi", "eval_file_dec")
-fn do_eval_file(
-  lua: Lua,
-  path: String,
-) -> Result(#(Lua, List(dynamic.Dynamic)), LuaError)
-
-/// Same as `glua.eval_file`, but returns references to the values instead of decode them.
-pub fn ref_eval_file(
-  state lua: Lua,
-  path path: String,
-) -> Result(#(Lua, List(ValueRef)), LuaError) {
-  do_ref_eval_file(lua, path)
+pub fn eval_file(state lua: Lua, path path: String) -> Result(Output, LuaError) {
+  do_eval_file(lua, path)
+  |> result.map(to_output)
 }
 
 @external(erlang, "glua_ffi", "eval_file")
-fn do_ref_eval_file(
+fn do_eval_file(
   lua: Lua,
   path: String,
 ) -> Result(#(Lua, List(ValueRef)), LuaError)
