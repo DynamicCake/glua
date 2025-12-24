@@ -5,6 +5,7 @@ import gleam/int
 import gleam/list
 import gleam/option
 import gleam/pair
+import gleam/result
 import gleeunit
 import glua
 
@@ -58,18 +59,15 @@ pub fn sandbox_test() {
   let assert Ok(lua) = glua.sandbox(glua.new(), ["string"])
 
   let assert Error(glua.LuaRuntimeException(glua.IllegalIndex(_, name), _)) =
-    glua.eval(
-      state: lua,
-      code: "return string.upper('my_string')",
-      using: decode.string,
-    )
+    glua.eval(state: lua, code: "return string.upper('my_string')")
+    |> glua.dec_one(decode.string)
 
   assert name == "upper"
 
   let assert Ok(lua) = glua.sandbox(glua.new(), ["os", "execute"])
 
   let assert Error(glua.LuaRuntimeException(exception, _)) =
-    glua.ref_eval(
+    glua.eval(
       state: lua,
       code: "os.execute(\"echo 'sandbox test is failing'\"); os.exit(1)",
     )
@@ -93,7 +91,7 @@ pub fn new_sandboxed_test() {
   let assert Ok(lua) = glua.new_sandboxed([])
 
   let assert Error(glua.LuaRuntimeException(exception, _)) =
-    glua.ref_eval(state: lua, code: "return load(\"return 1\")")
+    glua.eval(state: lua, code: "return load(\"return 1\")")
 
   assert exception == glua.ErrorCall(["load is sandboxed"])
 
@@ -104,7 +102,7 @@ pub fn new_sandboxed_test() {
   assert exception == glua.ErrorCall(["os.exit is sandboxed"])
 
   let assert Error(glua.LuaRuntimeException(glua.IllegalIndex(_, name), _)) =
-    glua.ref_eval(state: lua, code: "io.write('some_message')")
+    glua.eval(state: lua, code: "io.write('some_message')")
 
   assert name == "write"
 
@@ -112,8 +110,9 @@ pub fn new_sandboxed_test() {
   let assert Ok(lua) = glua.set_lua_paths(lua, paths: ["./test/lua/?.lua"])
 
   let code = "local s = require 'example'; return s"
-  let assert Ok(#(_, [result])) =
-    glua.eval(state: lua, code:, using: decode.string)
+  let assert Ok(#(_, result)) =
+    glua.eval(state: lua, code:)
+    |> glua.dec_one(using: decode.string)
 
   assert result == "LUA IS AN EMBEDDABLE LANGUAGE"
 }
@@ -147,35 +146,41 @@ pub fn encoding_and_decoding_nested_tables_test() {
 
   let assert Ok(result) =
     glua.get(state: lua, keys:)
-    |> glua.sdec(nested_table_decoder)
+    |> glua.gdec(nested_table_decoder)
 
   assert result == [#("key", [#(1, [#("deeper_key", "deeper_value")])])]
 }
 
-pub type Userdata {
-  Userdata(foo: String, bar: Int)
+pub type TestUserdata {
+  TestUserdata(foo: String, bar: Int)
 }
 
 pub fn userdata_test() {
   let lua = glua.new()
-  let userdata = Userdata("my-userdata", 1)
+  let userdata = TestUserdata("my-userdata", 1)
+  // TODO: Fix so it isn't so weird
   let userdata_decoder = {
-    use foo <- decode.field(1, decode.string)
-    use bar <- decode.field(2, decode.int)
-    decode.success(Userdata(foo:, bar:))
+    use data <- decode.field(1, {
+      use foo <- decode.field(1, decode.string)
+      use bar <- decode.field(2, decode.int)
+      decode.success(TestUserdata(foo:, bar:))
+    })
+    decode.success(data)
   }
 
   let assert Ok(lua) = glua.set(lua, ["my_userdata"], glua.userdata(userdata))
-  let assert Ok(#(lua, [result])) =
-    glua.eval(lua, "return my_userdata", userdata_decoder)
+  let assert Ok(#(lua, result)) =
+    glua.eval(lua, "return my_userdata")
+    |> glua.dec_one(userdata_decoder)
 
   assert result == userdata
 
-  let userdata = Userdata("other_userdata", 2)
+  let userdata = TestUserdata("other_userdata", 2)
   let assert Ok(lua) =
     glua.set(lua, ["my_other_userdata"], glua.userdata(userdata))
   let assert Error(glua.LuaRuntimeException(glua.IllegalIndex(value, index), _)) =
-    glua.eval(lua, "return my_other_userdata.foo", decode.string)
+    glua.eval(lua, "return my_other_userdata.foo")
+    |> glua.dec_one(decode.string)
 
   assert value == "{usdref,1}"
   assert index == "foo"
@@ -186,7 +191,7 @@ pub fn get_test() {
 
   let assert Ok(pi) =
     glua.get(state: state, keys: ["math", "pi"])
-    |> glua.sdec(using: decode.float)
+    |> glua.gdec(using: decode.float)
 
   assert pi >. 3.14 && pi <. 3.15
 
@@ -195,7 +200,7 @@ pub fn get_test() {
   let assert Ok(state) = glua.set(state:, keys:, value: encoded)
   let assert Ok(ret) =
     glua.get(state:, keys:)
-    |> glua.sdec(using: decode.bool)
+    |> glua.gdec(using: decode.bool)
 
   assert ret == True
 
@@ -205,10 +210,12 @@ pub fn get_test() {
   return 'ignored'
 "
   let assert Ok(#(state, _)) =
-    glua.new() |> glua.eval(code:, using: decode.string)
+    glua.new()
+    |> glua.eval(code:)
+    |> glua.dec_one(using: decode.string)
   let assert Ok(ret) =
     glua.get(state:, keys: ["my_value"])
-    |> glua.sdec(using: decode.int)
+    |> glua.gdec(using: decode.int)
 
   assert ret == 10
 }
@@ -217,7 +224,7 @@ pub fn get_returns_proper_errors_test() {
   let state = glua.new()
 
   assert glua.get(state:, keys: ["non_existent_global"])
-    |> glua.sdec(using: decode.string)
+    |> glua.gdec(using: decode.string)
     == Error(glua.KeyNotFound)
 
   let encoded = glua.int(10)
@@ -225,7 +232,7 @@ pub fn get_returns_proper_errors_test() {
     glua.set(state:, keys: ["my_table", "some_value"], value: encoded)
 
   assert glua.get(state:, keys: ["my_table", "my_val"])
-    |> glua.sdec(using: decode.int)
+    |> glua.gdec(using: decode.int)
     == Error(glua.KeyNotFound)
 }
 
@@ -236,7 +243,7 @@ pub fn set_test() {
     glua.set(state: glua.new(), keys: ["_VERSION"], value: encoded)
   let assert Ok(result) =
     glua.get(state: lua, keys: ["_VERSION"])
-    |> glua.sdec(using: decode.string)
+    |> glua.gdec(using: decode.string)
 
   assert result == "custom version"
 
@@ -253,7 +260,7 @@ pub fn set_test() {
   let assert Ok(lua) = glua.set(lua, keys, encoded)
 
   assert glua.get(lua, keys)
-    |> glua.sdec(glua.table_decoder(decode.int, decode.int))
+    |> glua.gdec(glua.table_decoder(decode.int, decode.int))
     == Ok([#(1, 4), #(2, 16), #(3, 49), #(4, 144)])
 
   let count_odd = fn(lua: glua.Lua, args: List(dynamic.Dynamic)) {
@@ -322,12 +329,9 @@ pub fn set_test() {
 
   assert result == True
 
-  let assert Ok(#(_, [result])) =
-    glua.eval(
-      state: lua,
-      code: "return my_functions.is_odd(4)",
-      using: decode.bool,
-    )
+  let assert Ok(#(_, result)) =
+    glua.eval(state: lua, code: "return my_functions.is_odd(4)")
+    |> glua.dec_one(using: decode.bool)
 
   assert result == False
 }
@@ -338,7 +342,9 @@ pub fn set_lua_paths_test() {
 
   let code = "local s = require 'example'; return s"
 
-  let assert Ok(#(_, [result])) = glua.eval(state:, code:, using: decode.string)
+  let assert Ok(#(_, result)) =
+    glua.eval(state:, code:)
+    |> glua.dec_one(using: decode.string)
 
   assert result == "LUA IS AN EMBEDDABLE LANGUAGE"
 }
@@ -384,17 +390,15 @@ pub fn eval_load_file_test() {
 }
 
 pub fn eval_test() {
-  let assert Ok(#(lua, [result])) =
-    glua.eval(
-      state: glua.new(),
-      code: "return 'hello, ' .. 'world!'",
-      using: decode.string,
-    )
+  let assert Ok(#(lua, result)) =
+    glua.eval(state: glua.new(), code: "return 'hello, ' .. 'world!'")
+    |> glua.dec_one(using: decode.string)
 
   assert result == "hello, world!"
 
   let assert Ok(#(_, results)) =
-    glua.eval(state: lua, code: "return 2 + 2, 3 - 1", using: decode.int)
+    glua.eval(state: lua, code: "return 2 + 2, 3 - 1")
+    |> glua.dec(using: decode.list(decode.int))
 
   assert results == [4, 2]
 }
@@ -402,20 +406,21 @@ pub fn eval_test() {
 pub fn eval_returns_proper_errors_test() {
   let state = glua.new()
 
-  assert glua.eval(state:, code: "if true then 1 + ", using: decode.int)
+  assert glua.eval(state:, code: "if true then 1 + ")
     == Error(
       glua.LuaCompilerException(messages: ["syntax error before: ", "1"]),
     )
 
-  assert glua.eval(state:, code: "return 'Hello from Lua!'", using: decode.int)
+  assert glua.eval(state:, code: "return 'Hello from Lua!'")
+    |> glua.dec_one(using: decode.int)
     == Error(
-      glua.UnexpectedResultType([decode.DecodeError("Int", "String", [])]),
+      glua.UnexpectedResultType([decode.DecodeError("Int", "String", ["0"])]),
     )
 
   let assert Error(glua.LuaRuntimeException(
     exception: glua.IllegalIndex(value:, index:),
     state: _,
-  )) = glua.eval(state:, code: "return a.b", using: decode.int)
+  )) = glua.eval(state:, code: "return a.b")
 
   assert value == "nil"
   assert index == "b"
@@ -423,20 +428,22 @@ pub fn eval_returns_proper_errors_test() {
   let assert Error(glua.LuaRuntimeException(
     exception: glua.ErrorCall(messages:),
     state: _,
-  )) = glua.eval(state:, code: "error('error message')", using: decode.int)
+  )) =
+    glua.eval(state:, code: "error('error message')")
+    |> glua.dec_one(using: decode.int)
 
   assert messages == ["error message"]
 
   let assert Error(glua.LuaRuntimeException(
     exception: glua.UndefinedFunction(value:),
     state: _,
-  )) = glua.eval(state:, code: "local a = 5; a()", using: decode.int)
+  )) = glua.eval(state:, code: "local a = 5; a()")
 
   assert value == "5"
   let assert Error(glua.LuaRuntimeException(
     exception: glua.BadArith(operator:, args:),
     state: _,
-  )) = glua.eval(state:, code: "return 10 / 0", using: decode.int)
+  )) = glua.eval(state:, code: "return 10 / 0")
 
   assert operator == "/"
   assert args == ["10", "0"]
@@ -444,12 +451,7 @@ pub fn eval_returns_proper_errors_test() {
   let assert Error(glua.LuaRuntimeException(
     exception: glua.AssertError(message:),
     state: _,
-  )) =
-    glua.eval(
-      state:,
-      code: "assert(1 == 2, 'assertion failed')",
-      using: decode.int,
-    )
+  )) = glua.eval(state:, code: "assert(1 == 2, 'assertion failed')")
 
   assert message == "assertion failed"
 }
@@ -467,7 +469,8 @@ pub fn eval_file_test() {
 
 pub fn call_function_test() {
   let assert Ok(#(lua, [fun])) =
-    glua.ref_eval(state: glua.new(), code: "return string.reverse")
+    glua.eval(state: glua.new(), code: "return string.reverse")
+    |> result.map(glua.output_pair)
 
   let encoded = glua.string("auL")
 
@@ -482,7 +485,8 @@ pub fn call_function_test() {
   assert result == "Lua"
 
   let assert Ok(#(lua, [fun])) =
-    glua.ref_eval(state: lua, code: "return function(a, b) return a .. b end")
+    glua.eval(state: lua, code: "return function(a, b) return a .. b end")
+    |> result.map(glua.output_pair)
 
   let args = list.map(["Lua in ", "Gleam"], glua.string)
 
@@ -496,7 +500,8 @@ pub fn call_function_returns_proper_errors_test() {
   let state = glua.new()
 
   let assert Ok(#(state, [ref])) =
-    glua.ref_eval(state:, code: "return string.upper")
+    glua.eval(state:, code: "return string.upper")
+    |> result.map(glua.output_pair)
 
   let arg = glua.string("Hello from Gleam!")
 
@@ -505,7 +510,9 @@ pub fn call_function_returns_proper_errors_test() {
       glua.UnexpectedResultType([decode.DecodeError("Int", "String", [])]),
     )
 
-  let assert Ok(#(lua, [ref])) = glua.ref_eval(state:, code: "return 1")
+  let assert Ok(#(lua, [ref])) =
+    glua.eval(state:, code: "return 1")
+    |> result.map(glua.output_pair)
 
   let assert Error(glua.LuaRuntimeException(
     exception: glua.UndefinedFunction(value:),
@@ -552,7 +559,9 @@ pub fn call_function_by_name_test() {
 pub fn nested_function_references_test() {
   let code = "return function() return math.sqrt end"
 
-  let assert Ok(#(lua, [ref])) = glua.ref_eval(state: glua.new(), code:)
+  let assert Ok(#(lua, [ref])) =
+    glua.eval(state: glua.new(), code:)
+    |> result.map(glua.output_pair)
   let assert Ok(#(lua, [ref])) =
     glua.ref_call_function(state: lua, ref:, args: [])
 
@@ -571,11 +580,13 @@ pub fn alloc_test() {
     glua.ref_call_function_by_name(lua, ["setmetatable"], [table, metatable])
   let assert Ok(lua) = glua.set(lua, ["test_table"], table)
 
-  let assert Ok(#(_lua, [ret1])) =
-    glua.eval(lua, "return test_table.any_key", decode.string)
+  let assert Ok(#(_lua, ret1)) =
+    glua.eval(lua, "return test_table.any_key")
+    |> glua.dec_one(decode.string)
 
-  let assert Ok(#(_lua, [ret2])) =
-    glua.eval(lua, "return test_table.other_key", decode.string)
+  let assert Ok(#(_lua, ret2)) =
+    glua.eval(lua, "return test_table.other_key")
+    |> glua.dec_one(decode.string)
 
   assert ret1 == "constant"
   assert ret2 == "constant"

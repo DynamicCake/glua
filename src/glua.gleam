@@ -5,6 +5,7 @@
 import gleam/dynamic
 import gleam/dynamic/decode
 import gleam/list
+import gleam/pair
 import gleam/result
 import gleam/string
 
@@ -58,7 +59,7 @@ pub opaque type Output {
   Output(lua: Lua, refs: List(ValueRef))
 }
 
-pub opaque type SingleOutput {
+pub opaque type GetOutput {
   SingleOutput(lua: Lua, ref: ValueRef)
 }
 
@@ -175,17 +176,35 @@ fn do_decode(ref: ValueRef, lua: Lua) -> dynamic.Dynamic
 pub fn dec(
   output: Result(Output, LuaError),
   using decoder: decode.Decoder(a),
-) -> Result(a, LuaError) {
+) -> Result(#(Lua, a), LuaError) {
   use output <- result.try(output)
   do_decode_list(output.refs, output.lua)
   |> dynamic.list()
   |> decode.run(decoder)
+  |> result.map(pair.new(output.lua, _))
   |> result.map_error(UnexpectedResultType)
 }
 
-/// Single decode
-pub fn sdec(
-  output: Result(SingleOutput, LuaError),
+/// Assume there will be only one item to decode
+pub fn dec_one(
+  output: Result(Output, LuaError),
+  using decoder: decode.Decoder(a),
+) -> Result(#(Lua, a), LuaError) {
+  use output <- result.try(output)
+
+  do_decode_list(output.refs, output.lua)
+  |> dynamic.list()
+  |> decode.run({
+    use it <- decode.field(0, decoder)
+    decode.success(it)
+  })
+  |> result.map(pair.new(output.lua, _))
+  |> result.map_error(UnexpectedResultType)
+}
+
+/// GetOuput decoder
+pub fn gdec(
+  output: Result(GetOutput, LuaError),
   using decoder: decode.Decoder(a),
 ) -> Result(a, LuaError) {
   use output <- result.try(output)
@@ -194,11 +213,11 @@ pub fn sdec(
   |> result.map_error(UnexpectedResultType)
 }
 
-pub fn refs(output: Output) {
-  output.refs
+pub fn output_pair(output: Output) -> #(Lua, List(ValueRef)) {
+  #(output.lua, output.refs)
 }
 
-pub fn ref(output: SingleOutput) {
+pub fn ref(output: GetOutput) {
   output.ref
 }
 
@@ -289,7 +308,7 @@ pub fn get_private(
 pub fn get(
   state lua: Lua,
   keys keys: List(String),
-) -> Result(SingleOutput, LuaError) {
+) -> Result(GetOutput, LuaError) {
   do_ref_get(lua, keys)
   |> result.map(SingleOutput(lua, _))
 }
@@ -475,83 +494,15 @@ pub fn load_file(
 @external(erlang, "glua_ffi", "load_file")
 fn do_load_file(lua: Lua, path: String) -> Result(#(Lua, Chunk), LuaError)
 
-/// Evaluates a string of Lua code.
-///
-/// ## Examples
-///
-/// ```gleam
-/// let assert Ok(#(_, results)) = glua.eval(
-///   state: glua.new(),
-///   code: "return 1 + 2",
-///   using: decode.int
-/// )
-/// assert results == [3]
-/// ```
-///
-/// ```gleam
-/// let my_decoder = decode.one_of(decode.string, or: [
-///   decode.int |> decode.map(int.to_string)
-/// ])
-///
-/// let assert Ok(#(_, results)) = glua.eval(
-///   state: glua.new(),
-///   code: "return 'hello, world!', 10",
-///   using: my_decoder
-/// )
-/// assert results == ["hello, world!", "10"]
-/// ```
-///
-/// ```gleam
-/// glua.eval(state: glua.new(), code: "return 1 * ", using: decode.int)
-/// // -> Error(glua.LuaCompilerException(
-///   messages: ["syntax error before: ", "1"]
-/// ))
-/// ```
-///
-/// ```gleam
-/// glua.eval(state: glua.new(), code: "return 'Hello, world!'", using: decode.int)
-/// // -> Error(glua.UnexpectedResultType(
-///   [decode.DecodeError("Int", "String", [])]
-/// ))
-/// ```
-///
-/// > **Note**: If you are evaluating the same piece of code multiple times,
-/// > instead of calling `glua.eval` repeatly it is recommended to first convert
-/// > the code to a chunk by passing it to `glua.load`, and then
-/// > evaluate that chunk using `glua.eval_chunk` or `glua.ref_eval_chunk`.
-pub fn eval(
-  state lua: Lua,
-  code code: String,
-  using decoder: decode.Decoder(a),
-) -> Result(#(Lua, List(a)), LuaError) {
-  use #(lua, ret) <- result.try(do_eval(lua, code))
-  use decoded <- result.try(
-    list.try_map(ret, decode.run(_, decoder))
-    |> result.map_error(UnexpectedResultType),
-  )
-
-  Ok(#(lua, decoded))
-}
-
-@external(erlang, "glua_ffi", "eval_dec")
-fn do_eval(
-  lua: Lua,
-  code: String,
-) -> Result(#(Lua, List(dynamic.Dynamic)), LuaError)
-
 /// Same as `glua.eval`, but returns references to the values instead of decode them
-pub fn ref_eval(
-  state lua: Lua,
-  code code: String,
-) -> Result(#(Lua, List(ValueRef)), LuaError) {
-  do_ref_eval(lua, code)
+pub fn eval(state lua: Lua, code code: String) -> Result(Output, LuaError) {
+  use #(lua, val) <- result.try(do_eval(lua, code))
+  Output(lua, val)
+  |> Ok
 }
 
 @external(erlang, "glua_ffi", "eval")
-fn do_ref_eval(
-  lua: Lua,
-  code: String,
-) -> Result(#(Lua, List(ValueRef)), LuaError)
+fn do_eval(lua: Lua, code: String) -> Result(#(Lua, List(ValueRef)), LuaError)
 
 /// Evaluates a compiled chunk of Lua code.
 ///
