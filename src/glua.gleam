@@ -54,6 +54,14 @@ pub type Value
 /// that will return references to the values instead of decoding them.
 pub type ValueRef
 
+pub opaque type Output {
+  Output(lua: Lua, refs: List(ValueRef))
+}
+
+pub opaque type SingleOutput {
+  SingleOutput(lua: Lua, ref: ValueRef)
+}
+
 @external(erlang, "glua_ffi", "coerce_nil")
 pub fn nil() -> Value
 
@@ -157,6 +165,43 @@ fn wrap_function(
   fun: fn(Lua, List(dynamic.Dynamic)) -> #(Lua, List(Value)),
 ) -> Value
 
+@external(erlang, "luerl", "decode_list")
+fn do_decode_list(ref: List(ValueRef), lua: Lua) -> List(dynamic.Dynamic)
+
+@external(erlang, "luerl", "decode")
+fn do_decode(ref: ValueRef, lua: Lua) -> dynamic.Dynamic
+
+/// The decoder will always receive a list of values
+pub fn dec(
+  output: Result(Output, LuaError),
+  using decoder: decode.Decoder(a),
+) -> Result(a, LuaError) {
+  use output <- result.try(output)
+  do_decode_list(output.refs, output.lua)
+  |> dynamic.list()
+  |> decode.run(decoder)
+  |> result.map_error(UnexpectedResultType)
+}
+
+/// Single decode
+pub fn sdec(
+  output: Result(SingleOutput, LuaError),
+  using decoder: decode.Decoder(a),
+) -> Result(a, LuaError) {
+  use output <- result.try(output)
+  do_decode(output.ref, output.lua)
+  |> decode.run(decoder)
+  |> result.map_error(UnexpectedResultType)
+}
+
+pub fn refs(output: Output) {
+  output.refs
+}
+
+pub fn ref(output: SingleOutput) {
+  output.ref
+}
+
 /// Creates a new Lua VM instance
 @external(erlang, "luerl", "init")
 pub fn new() -> Lua
@@ -218,49 +263,6 @@ pub fn sandbox(state lua: Lua, keys keys: List(String)) -> Result(Lua, LuaError)
 @external(erlang, "glua_ffi", "sandbox_fun")
 fn sandbox_fun(msg: String) -> Value
 
-/// Gets a value in the Lua environment.
-///
-/// ## Examples
-///
-/// ```gleam
-/// glua.get(state: glua.new(), keys: ["_VERSION"], using: decode.string)
-/// // -> Ok("Lua 5.3")
-/// ```
-///
-/// ```gleam
-/// let #(lua, encoded) = glua.new() |> glua.bool(True)
-/// let assert Ok(lua) = glua.set(
-///   state: lua,
-///   keys: ["my_table", "my_value"],
-///   value: encoded
-/// )
-///
-/// glua.get(
-///   state: lua,
-///   keys: ["my_table", "my_value"],
-///   using: decode.bool
-/// )
-/// // -> Ok(True)
-/// ```
-///
-/// ```gleam
-/// glua.get(state: glua.new(), keys: ["non_existent"], using: decode.string)
-/// // -> Error(glua.KeyNotFound)
-/// ```
-pub fn get(
-  state lua: Lua,
-  keys keys: List(String),
-  using decoder: decode.Decoder(a),
-) -> Result(a, LuaError) {
-  use value <- result.try(do_get(lua, keys))
-
-  use decoded <- result.try(
-    decode.run(value, decoder) |> result.map_error(UnexpectedResultType),
-  )
-
-  Ok(decoded)
-}
-
 /// Gets a private value that is not exposed to the Lua runtime.
 ///
 /// ## Examples
@@ -284,12 +286,12 @@ pub fn get_private(
   Ok(decoded)
 }
 
-/// Same as `glua.get`, but returns a reference to the value instead of decoding it
-pub fn ref_get(
+pub fn get(
   state lua: Lua,
   keys keys: List(String),
-) -> Result(ValueRef, LuaError) {
+) -> Result(SingleOutput, LuaError) {
   do_ref_get(lua, keys)
+  |> result.map(SingleOutput(lua, _))
 }
 
 /// Sets a value in the Lua environment.
@@ -415,9 +417,6 @@ fn do_alloc_table(content: List(a), lua: Lua) -> #(Value, Lua)
 
 @external(erlang, "luerl_heap", "alloc_userdata")
 fn do_alloc_userdata(a: anything, lua: Lua) -> #(Value, Lua)
-
-@external(erlang, "glua_ffi", "get_table_keys_dec")
-fn do_get(lua: Lua, keys: List(String)) -> Result(dynamic.Dynamic, LuaError)
 
 @external(erlang, "glua_ffi", "get_private")
 fn do_get_private(lua: Lua, key: String) -> Result(dynamic.Dynamic, LuaError)
@@ -752,8 +751,8 @@ pub fn call_function_by_name(
   args args: List(Value),
   using decoder: decode.Decoder(a),
 ) -> Result(#(Lua, List(a)), LuaError) {
-  use fun <- result.try(ref_get(lua, keys))
-  call_function(lua, fun, args, decoder)
+  use fun <- result.try(get(lua, keys))
+  call_function(lua, fun.ref, args, decoder)
 }
 
 /// Same as `glua.call_function_by_name`, but it chains `glua.ref_get` with `glua.ref_call_function` instead of `glua.call_function`
@@ -762,6 +761,6 @@ pub fn ref_call_function_by_name(
   keys keys: List(String),
   args args: List(Value),
 ) -> Result(#(Lua, List(ValueRef)), LuaError) {
-  use fun <- result.try(ref_get(lua, keys))
-  ref_call_function(lua, fun, args)
+  use fun <- result.try(get(lua, keys))
+  ref_call_function(lua, fun.ref, args)
 }

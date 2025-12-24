@@ -146,7 +146,8 @@ pub fn encoding_and_decoding_nested_tables_test() {
   let assert Ok(lua) = glua.set(state: glua.new(), keys:, value: tbl)
 
   let assert Ok(result) =
-    glua.get(state: lua, keys:, using: nested_table_decoder)
+    glua.get(state: lua, keys:)
+    |> glua.sdec(nested_table_decoder)
 
   assert result == [#("key", [#(1, [#("deeper_key", "deeper_value")])])]
 }
@@ -184,14 +185,17 @@ pub fn get_test() {
   let state = glua.new()
 
   let assert Ok(pi) =
-    glua.get(state: state, keys: ["math", "pi"], using: decode.float)
+    glua.get(state: state, keys: ["math", "pi"])
+    |> glua.sdec(using: decode.float)
 
   assert pi >. 3.14 && pi <. 3.15
 
   let keys = ["my_table", "my_value"]
   let encoded = glua.bool(True)
   let assert Ok(state) = glua.set(state:, keys:, value: encoded)
-  let assert Ok(ret) = glua.get(state:, keys:, using: decode.bool)
+  let assert Ok(ret) =
+    glua.get(state:, keys:)
+    |> glua.sdec(using: decode.bool)
 
   assert ret == True
 
@@ -202,7 +206,9 @@ pub fn get_test() {
 "
   let assert Ok(#(state, _)) =
     glua.new() |> glua.eval(code:, using: decode.string)
-  let assert Ok(ret) = glua.get(state:, keys: ["my_value"], using: decode.int)
+  let assert Ok(ret) =
+    glua.get(state:, keys: ["my_value"])
+    |> glua.sdec(using: decode.int)
 
   assert ret == 10
 }
@@ -210,14 +216,16 @@ pub fn get_test() {
 pub fn get_returns_proper_errors_test() {
   let state = glua.new()
 
-  assert glua.get(state:, keys: ["non_existent_global"], using: decode.string)
+  assert glua.get(state:, keys: ["non_existent_global"])
+    |> glua.sdec(using: decode.string)
     == Error(glua.KeyNotFound)
 
   let encoded = glua.int(10)
   let assert Ok(state) =
     glua.set(state:, keys: ["my_table", "some_value"], value: encoded)
 
-  assert glua.get(state:, keys: ["my_table", "my_val"], using: decode.int)
+  assert glua.get(state:, keys: ["my_table", "my_val"])
+    |> glua.sdec(using: decode.int)
     == Error(glua.KeyNotFound)
 }
 
@@ -227,7 +235,8 @@ pub fn set_test() {
   let assert Ok(lua) =
     glua.set(state: glua.new(), keys: ["_VERSION"], value: encoded)
   let assert Ok(result) =
-    glua.get(state: lua, keys: ["_VERSION"], using: decode.string)
+    glua.get(state: lua, keys: ["_VERSION"])
+    |> glua.sdec(using: decode.string)
 
   assert result == "custom version"
 
@@ -243,7 +252,8 @@ pub fn set_test() {
     )
   let assert Ok(lua) = glua.set(lua, keys, encoded)
 
-  assert glua.get(lua, keys, glua.table_decoder(decode.int, decode.int))
+  assert glua.get(lua, keys)
+    |> glua.sdec(glua.table_decoder(decode.int, decode.int))
     == Ok([#(1, 4), #(2, 16), #(3, 49), #(4, 144)])
 
   let count_odd = fn(lua: glua.Lua, args: List(dynamic.Dynamic)) {
