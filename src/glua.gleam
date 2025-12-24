@@ -504,53 +504,16 @@ pub fn eval(state lua: Lua, code code: String) -> Result(Output, LuaError) {
 @external(erlang, "glua_ffi", "eval")
 fn do_eval(lua: Lua, code: String) -> Result(#(Lua, List(ValueRef)), LuaError)
 
-/// Evaluates a compiled chunk of Lua code.
-///
-/// ## Examples
-/// ```gleam
-/// let assert Ok(#(lua, chunk)) = glua.load(
-///   state: glua.new(),
-///   code: "return 'hello, world!'"
-/// )
-///
-/// let assert Ok(#(_, results)) = glua.eval_chunk(
-///   state: lua,
-///   chunk:,
-///   using: decode.string
-/// )
-///
-/// assert results == ["hello, world!"]
-/// ```
 pub fn eval_chunk(
   state lua: Lua,
   chunk chunk: Chunk,
-  using decoder: decode.Decoder(a),
-) -> Result(#(Lua, List(a)), LuaError) {
-  use #(lua, ret) <- result.try(do_eval_chunk(lua, chunk))
-  use decoded <- result.try(
-    list.try_map(ret, decode.run(_, decoder))
-    |> result.map_error(UnexpectedResultType),
-  )
-
-  Ok(#(lua, decoded))
-}
-
-@external(erlang, "glua_ffi", "eval_chunk_dec")
-fn do_eval_chunk(
-  lua: Lua,
-  chunk: Chunk,
-) -> Result(#(Lua, List(dynamic.Dynamic)), LuaError)
-
-/// Same as `glua.eval_chunk`, but returns references to the values instead of decode them
-pub fn ref_eval_chunk(
-  state lua: Lua,
-  chunk chunk: Chunk,
-) -> Result(#(Lua, List(ValueRef)), LuaError) {
-  do_ref_eval_chunk(lua, chunk)
+) -> Result(Output, LuaError) {
+  do_eval_chunk(lua, chunk)
+  |> result.map(fn(pair) { Output(lua: pair.0, refs: pair.1) })
 }
 
 @external(erlang, "glua_ffi", "eval_chunk")
-fn do_ref_eval_chunk(
+fn do_eval_chunk(
   lua: Lua,
   chunk: Chunk,
 ) -> Result(#(Lua, List(ValueRef)), LuaError)

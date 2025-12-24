@@ -374,8 +374,9 @@ pub fn delete_private_test() {
 pub fn load_test() {
   let assert Ok(#(lua, chunk)) =
     glua.load(state: glua.new(), code: "return 5 * 5")
-  let assert Ok(#(_, [result])) =
-    glua.eval_chunk(state: lua, chunk:, using: decode.int)
+  let assert Ok(#(_, result)) =
+    glua.eval_chunk(state: lua, chunk:)
+    |> glua.dec_one(using: decode.int)
 
   assert result == 25
 }
@@ -383,8 +384,9 @@ pub fn load_test() {
 pub fn eval_load_file_test() {
   let assert Ok(#(lua, chunk)) =
     glua.load_file(state: glua.new(), path: "./test/lua/example.lua")
-  let assert Ok(#(_, [result])) =
-    glua.eval_chunk(state: lua, chunk:, using: decode.string)
+  let assert Ok(#(_, result)) =
+    glua.eval_chunk(state: lua, chunk:)
+    |> glua.dec_one(using: decode.string)
 
   assert result == "LUA IS AN EMBEDDABLE LANGUAGE"
 }
