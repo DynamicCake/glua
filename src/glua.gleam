@@ -498,7 +498,6 @@ pub fn load_file(
 @external(erlang, "glua_ffi", "load_file")
 fn do_load_file(lua: Lua, path: String) -> Result(#(Lua, Chunk), LuaError)
 
-/// Same as `glua.eval`, but returns references to the values instead of decode them
 pub fn eval(state lua: Lua, code code: String) -> Result(Output, LuaError) {
   use #(lua, val) <- result.try(do_eval(lua, code))
   Output(lua, val)
@@ -533,117 +532,27 @@ fn do_eval_file(
   path: String,
 ) -> Result(#(Lua, List(ValueRef)), LuaError)
 
-/// Calls a Lua function by reference.
-///
-/// ## Examples
-/// ```gleam
-/// let assert Ok(#(lua, fun)) = glua.ref_eval(state: glua.new(), code: "return math.sqrt")
-///
-/// let #(lua, encoded) = glua.int(lua, 81)
-/// let assert Ok(#(_, [result])) = glua.call_function(
-///   state: lua,
-///   ref: fun,
-///   args: [encoded],
-///   using: decode.int
-/// )
-///
-/// assert result == 9
-/// ```
-///
-/// ```gleam
-/// let code = "function fib(n)
-///   if n <= 1 then
-///     return n
-///   else
-///     return fib(n - 1) + fib(n - 2)
-///   end
-/// end
-///
-/// return fib
-/// "
-/// let assert Ok(#(lua, fun)) = glua.ref_eval(state: glua.new(), code:)
-///
-/// let #(lua, encoded) = glua.int(lua, 10)
-/// let assert Ok(#(_, [result])) = glua.call_function(
-///   state: lua,
-///   ref: fun,
-///   args: [encoded],
-///   using: decode.int
-/// )
-///
-/// assert result == 55 
-/// ```
 pub fn call_function(
   state lua: Lua,
   ref fun: ValueRef,
   args args: List(Value),
-  using decoder: decode.Decoder(a),
-) -> Result(#(Lua, List(a)), LuaError) {
-  use #(lua, ret) <- result.try(do_call_function(lua, fun, args))
-  use decoded <- result.try(
-    list.try_map(ret, decode.run(_, decoder))
-    |> result.map_error(UnexpectedResultType),
-  )
-
-  Ok(#(lua, decoded))
-}
-
-@external(erlang, "glua_ffi", "call_function_dec")
-fn do_call_function(
-  lua: Lua,
-  fun: ValueRef,
-  args: List(Value),
-) -> Result(#(Lua, List(dynamic.Dynamic)), LuaError)
-
-/// Same as `glua.call_function`, but returns references to the values instead of decode them.
-pub fn ref_call_function(
-  state lua: Lua,
-  ref fun: ValueRef,
-  args args: List(Value),
-) -> Result(#(Lua, List(ValueRef)), LuaError) {
-  do_ref_call_function(lua, fun, args)
+) -> Result(Output, LuaError) {
+  do_call_function(lua, fun, args)
+  |> result.map(to_output)
 }
 
 @external(erlang, "glua_ffi", "call_function")
-fn do_ref_call_function(
+fn do_call_function(
   lua: Lua,
   fun: ValueRef,
   args: List(Value),
 ) -> Result(#(Lua, List(ValueRef)), LuaError)
 
-/// Gets a reference to the function at `keys`, then inmediatly calls it with the provided `args`.
-///
-/// This is a shorthand for `glua.ref_get` followed by `glua.call_function`.
-///
-/// ## Examples
-///
-/// ```gleam
-/// let #(lua, encoded) = glua.new() |> glua.string("hello from gleam!")
-/// let assert Ok(#(_, [s])) = glua.call_function_by_name(
-///   state: lua,
-///   keys: ["string", "upper"],
-///   args: [encoded],
-///   using: decode.string
-/// )
-///
-/// assert s == "HELLO FROM GLEAM!" 
-/// ```
 pub fn call_function_by_name(
   state lua: Lua,
   keys keys: List(String),
   args args: List(Value),
-  using decoder: decode.Decoder(a),
-) -> Result(#(Lua, List(a)), LuaError) {
+) -> Result(Output, LuaError) {
   use fun <- result.try(get(lua, keys))
-  call_function(lua, fun.ref, args, decoder)
-}
-
-/// Same as `glua.call_function_by_name`, but it chains `glua.ref_get` with `glua.ref_call_function` instead of `glua.call_function`
-pub fn ref_call_function_by_name(
-  state lua: Lua,
-  keys keys: List(String),
-  args args: List(Value),
-) -> Result(#(Lua, List(ValueRef)), LuaError) {
-  use fun <- result.try(get(lua, keys))
-  ref_call_function(lua, fun.ref, args)
+  call_function(lua, fun.ref, args)
 }

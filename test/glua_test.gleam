@@ -31,13 +31,9 @@ pub fn get_table_test() {
     })
 
   let assert Ok(lua) = glua.set(lua, ["cool_numbers"], cool_numbers)
-  let assert Ok(#(_lua, [table])) =
-    glua.call_function_by_name(
-      lua,
-      ["cool_numbers"],
-      [],
-      using: glua.table_decoder(decode.string, decode.int),
-    )
+  let assert Ok(#(_lua, table)) =
+    glua.call_function_by_name(lua, ["cool_numbers"], [])
+    |> glua.dec_one(using: glua.table_decoder(decode.string, decode.int))
 
   assert dict.from_list(table) == dict.from_list(my_table)
 }
@@ -47,12 +43,8 @@ pub fn sandbox_test() {
   let args = list.map([20, 10], glua.int)
 
   let assert Error(glua.LuaRuntimeException(exception, _)) =
-    glua.call_function_by_name(
-      state: lua,
-      keys: ["math", "max"],
-      args:,
-      using: decode.int,
-    )
+    glua.call_function_by_name(state: lua, keys: ["math", "max"], args:)
+    |> glua.dec_one(using: decode.int)
 
   assert exception == glua.ErrorCall(["math.max is sandboxed"])
 
@@ -77,12 +69,8 @@ pub fn sandbox_test() {
   let assert Ok(lua) = glua.sandbox(glua.new(), ["print"])
   let arg = glua.string("sandbox test is failing")
   let assert Error(glua.LuaRuntimeException(exception, _)) =
-    glua.call_function_by_name(
-      state: lua,
-      keys: ["print"],
-      args: [arg],
-      using: decode.string,
-    )
+    glua.call_function_by_name(state: lua, keys: ["print"], args: [arg])
+    |> glua.dec_one(using: decode.string)
 
   assert exception == glua.ErrorCall(["print is sandboxed"])
 }
@@ -97,7 +85,7 @@ pub fn new_sandboxed_test() {
 
   let arg = glua.int(1)
   let assert Error(glua.LuaRuntimeException(exception, _)) =
-    glua.ref_call_function_by_name(state: lua, keys: ["os", "exit"], args: [arg])
+    glua.call_function_by_name(state: lua, keys: ["os", "exit"], args: [arg])
 
   assert exception == glua.ErrorCall(["os.exit is sandboxed"])
 
@@ -285,13 +273,9 @@ pub fn set_test() {
       }),
     )
 
-  let assert Ok(#(lua, [result])) =
-    glua.call_function_by_name(
-      state: lua,
-      keys: ["count_odd"],
-      args: [arg],
-      using: decode.int,
-    )
+  let assert Ok(#(lua, result)) =
+    glua.call_function_by_name(state: lua, keys: ["count_odd"], args: [arg])
+    |> glua.dec_one(using: decode.int)
 
   assert result == 5
 
@@ -319,13 +303,13 @@ pub fn set_test() {
 
   let assert Ok(lua) = glua.set(state: lua, keys: ["my_functions"], value: tbl)
 
-  let assert Ok(#(lua, [result])) =
+  let assert Ok(#(lua, result)) =
     glua.call_function_by_name(
       state: lua,
       keys: ["my_functions", "is_even"],
       args: [arg],
-      using: decode.bool,
     )
+    |> glua.dec_one(using: decode.bool)
 
   assert result == True
 
@@ -473,13 +457,9 @@ pub fn call_function_test() {
 
   let encoded = glua.string("auL")
 
-  let assert Ok(#(lua, [result])) =
-    glua.call_function(
-      state: lua,
-      ref: fun,
-      args: [encoded],
-      using: decode.string,
-    )
+  let assert Ok(#(lua, result)) =
+    glua.call_function(state: lua, ref: fun, args: [encoded])
+    |> glua.dec_one(using: decode.string)
 
   assert result == "Lua"
 
@@ -489,8 +469,9 @@ pub fn call_function_test() {
 
   let args = list.map(["Lua in ", "Gleam"], glua.string)
 
-  let assert Ok(#(_, [result])) =
-    glua.call_function(state: lua, ref: fun, args:, using: decode.string)
+  let assert Ok(#(_, result)) =
+    glua.call_function(state: lua, ref: fun, args:)
+    |> glua.dec_one(using: decode.string)
 
   assert result == "Lua in Gleam"
 }
@@ -504,9 +485,10 @@ pub fn call_function_returns_proper_errors_test() {
 
   let arg = glua.string("Hello from Gleam!")
 
-  assert glua.call_function(state:, ref:, args: [arg], using: decode.int)
+  assert glua.call_function(state:, ref:, args: [arg])
+    |> glua.dec_one(using: decode.int)
     == Error(
-      glua.UnexpectedResultType([decode.DecodeError("Int", "String", [])]),
+      glua.UnexpectedResultType([decode.DecodeError("Int", "String", ["0"])]),
     )
 
   let assert Ok(#(lua, [ref])) =
@@ -516,41 +498,31 @@ pub fn call_function_returns_proper_errors_test() {
   let assert Error(glua.LuaRuntimeException(
     exception: glua.UndefinedFunction(value:),
     state: _,
-  )) = glua.call_function(state: lua, ref:, args: [], using: decode.string)
+  )) =
+    glua.call_function(state: lua, ref:, args: [])
+    |> glua.dec_one(using: decode.string)
 
   assert value == "1"
 }
 
 pub fn call_function_by_name_test() {
   let args = list.map([20, 10], glua.int)
-  let assert Ok(#(lua, [result])) =
-    glua.call_function_by_name(
-      state: glua.new(),
-      keys: ["math", "max"],
-      args:,
-      using: decode.int,
-    )
+  let assert Ok(#(lua, result)) =
+    glua.call_function_by_name(state: glua.new(), keys: ["math", "max"], args:)
+    |> glua.dec_one(using: decode.int)
 
   assert result == 20
 
-  let assert Ok(#(lua, [result])) =
-    glua.call_function_by_name(
-      state: lua,
-      keys: ["math", "min"],
-      args:,
-      using: decode.int,
-    )
+  let assert Ok(#(lua, result)) =
+    glua.call_function_by_name(state: lua, keys: ["math", "min"], args:)
+    |> glua.dec_one(using: decode.int)
 
   assert result == 10
 
   let arg = glua.float(10.2)
-  let assert Ok(#(_, [result])) =
-    glua.call_function_by_name(
-      state: lua,
-      keys: ["math", "type"],
-      args: [arg],
-      using: decode.optional(decode.string),
-    )
+  let assert Ok(#(_, result)) =
+    glua.call_function_by_name(state: lua, keys: ["math", "type"], args: [arg])
+    |> glua.dec_one(using: decode.optional(decode.string))
 
   assert result == option.Some("float")
 }
@@ -562,11 +534,13 @@ pub fn nested_function_references_test() {
     glua.eval(state: glua.new(), code:)
     |> result.map(glua.output_pair)
   let assert Ok(#(lua, [ref])) =
-    glua.ref_call_function(state: lua, ref:, args: [])
+    glua.call_function(state: lua, ref:, args: [])
+    |> result.map(glua.output_pair)
 
   let arg = glua.int(400)
-  let assert Ok(#(_, [result])) =
-    glua.call_function(state: lua, ref:, args: [arg], using: decode.float)
+  let assert Ok(#(_, result)) =
+    glua.call_function(state: lua, ref:, args: [arg])
+    |> glua.dec_one(using: decode.float)
   assert result == 20.0
 }
 
@@ -576,7 +550,8 @@ pub fn alloc_test() {
     glua.function(fn(lua, _args) { #(lua, [glua.string("constant")]) })
   let metatable = glua.table([#(glua.string("__index"), proxy)])
   let assert Ok(#(lua, _)) =
-    glua.ref_call_function_by_name(lua, ["setmetatable"], [table, metatable])
+    glua.call_function_by_name(lua, ["setmetatable"], [table, metatable])
+    |> result.map(glua.output_pair)
   let assert Ok(lua) = glua.set(lua, ["test_table"], table)
 
   let assert Ok(#(_lua, ret1)) =
