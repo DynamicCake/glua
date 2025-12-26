@@ -2,34 +2,23 @@
 
 -import(luerl_lib, [lua_error/2]).
 
--export([coerce/1, coerce_nil/0, coerce_userdata/1, wrap_fun/1, wrap_trans_fun/1, sandbox_fun/1,
+-export([coerce/1, coerce_nil/0, coerce_userdata/1, wrap_fun/2, sandbox_fun/1,
          get_table_keys/2, get_private/2, set_table_keys/3, load/2, load_file/2, eval/2, eval_file/2,
-         eval_chunk/2, call_function/3, alloc/2, proplist_to_map/1]).
+         eval_chunk/2, call_function/3, call_enc_function/3, is_lua_func/1, alloc/2, transform/2]).
 
-% This could be improved on perhaps
-proplist_to_map(Term) when is_list(Term) ->
-    case is_proplist(Term) of
-        true ->
-            maps:from_list([{K, proplist_to_map(V)} || {K, V} <- Term]);
-        false ->
-            case Term of
-                [] -> #{};
-                _  -> [proplist_to_map(E) || E <- Term]
-            end
+% Precondition: [[See glua.gleam]]
+transform(Term, {transformation, false, false}) ->
+    Term;
+transform(Term, Settings = {transformation, Proplist, _Funcs}) when is_list(Term) ->
+    Result = [{K, transform(V, Settings)} || {K, V} <- Term],
+    case Proplist of
+        true -> maps:from_list(Result);
+        false -> Result
     end;
-proplist_to_map(Term) when is_map(Term) ->
-    maps:from_list([{K, proplist_to_map(V)} || {K, V} <- maps:to_list(Term)]);
-proplist_to_map(Term) when is_tuple(Term) ->
-    list_to_tuple([proplist_to_map(E) || E <- tuple_to_list(Term)]);
-proplist_to_map(Other) ->
-    Other.
-
-is_proplist(L) when is_list(L), L =/= [] ->
-    lists:all(fun(E) ->
-        is_tuple(E) andalso tuple_size(E) =:= 2
-    end, L);
-is_proplist(_) ->
-    false.
+transform(Func, {transformation, _Proplist, true}) when is_function(Func, 2) ->
+    {lua_func, Func};
+transform(Term, {transformation, _Proplist, _Funcs}) ->
+    Term.
 
 %% turn `{userdata, Data}` into `Data` to make it more easy to decode it in Gleam
 maybe_process_userdata(Lst) when is_list(Lst) ->
@@ -146,17 +135,10 @@ alloc(St0, {usrdef,_}=Value) ->
 alloc(St0, Other) ->
     {St0, Other}.
 
-wrap_fun(Fun) ->
+wrap_fun(Fun, Settings) ->
     fun(Args, State) ->
             Decoded = luerl:decode_list(Args, State),
-            {NewState, Ret} = Fun(State, Decoded),
-            luerl:encode_list(Ret, NewState)
-    end.
-
-wrap_trans_fun(Fun) ->
-    fun(Args, State) ->
-            Decoded = luerl:decode_list(Args, State),
-            Transformed = [proplist_to_map(Arg) || Arg <- Decoded],
+            Transformed = [transform(Arg, Settings) || Arg <- Decoded],
             {NewState, Ret} = Fun(State, Transformed),
             luerl:encode_list(Ret, NewState)
     end.
@@ -200,9 +182,17 @@ eval_file(Lua, Path) ->
     to_gleam(luerl:dofile(
                  unicode:characters_to_list(Path), Lua)).
 
+is_lua_func({lua_func, Func}) when is_function(Func, 2) ->
+    true;
+is_lua_func(_Other) ->
+    false.
+
 call_function(Lua, Fun, Args) ->
     {EncodedArgs, State} = encode_list(Args, Lua),
     to_gleam(luerl:call(Fun, EncodedArgs, State)).
+
+call_enc_function(Lua, {lua_func, Func}, Args) ->
+    Func(Args).
 
 get_private(Lua, Key) ->
     try

@@ -59,6 +59,33 @@ pub type Value
 /// that will return references to the values instead of decoding them.
 pub type ValueRef
 
+/// A decoded lua function
+/// Accepts decoded values and returns decoded values
+pub type LuaFunc {
+  LuaFunc(func: fn(Lua, List(Value)) -> #(Lua, List(Value)))
+}
+
+@external(erlang, "glua_ffi", "is_lua_func")
+fn is_lua_func(a: anything) -> Bool
+
+@external(erlang, "glua_ffi", "coerce")
+fn coerce_lua_func(a: anything) -> LuaFunc
+
+pub fn decode_func() {
+  use then <- decode.then(decode.dynamic)
+  echo then
+  case is_lua_func(then) {
+    True -> decode.success(coerce_lua_func(then))
+    False ->
+      decode.failure(
+        LuaFunc(func: fn(_, _) { panic as "unreachable" }),
+        "LuaFunc",
+      )
+  }
+}
+
+// {NewState, Ret} = Fun(State, Transformed),
+
 pub opaque type Output {
   Output(lua: Lua, refs: List(ValueRef))
 }
@@ -169,17 +196,14 @@ pub fn function(
   f: fn(Lua, List(dynamic.Dynamic)) -> #(Lua, List(Value)),
 ) -> Value {
   // we need a little wrapper for functions to satisfy luerl's order of arguments and return value type
-  wrap_trans_function(f)
+  function_transform(f, default_transformation)
 }
 
 pub fn function_transform(
   f: fn(Lua, List(dynamic.Dynamic)) -> #(Lua, List(Value)),
   transformation: Transformation,
 ) -> Value {
-  case transformation {
-    NoTransform -> wrap_function(f)
-    ProplistTransform -> wrap_trans_function(f)
-  }
+  wrap_function(f, transformation)
   // we need a little wrapper for functions to satisfy luerl's order of arguments and return value type
 }
 
@@ -236,11 +260,7 @@ pub fn userdata(v: anything) -> Value
 @external(erlang, "glua_ffi", "wrap_fun")
 fn wrap_function(
   fun: fn(Lua, List(dynamic.Dynamic)) -> #(Lua, List(Value)),
-) -> Value
-
-@external(erlang, "glua_ffi", "wrap_trans_fun")
-fn wrap_trans_function(
-  fun: fn(Lua, List(dynamic.Dynamic)) -> #(Lua, List(Value)),
+  transformation: Transformation,
 ) -> Value
 
 @external(erlang, "luerl", "decode_list")
@@ -249,21 +269,32 @@ fn do_decode_list(ref: List(ValueRef), lua: Lua) -> List(dynamic.Dynamic)
 @external(erlang, "luerl", "decode")
 fn do_decode(ref: ValueRef, lua: Lua) -> dynamic.Dynamic
 
-@external(erlang, "glua_ffi", "proplist_to_map")
-fn proplist_to_map(a: anything) -> dynamic.Dynamic
+/// Precondition: ONLY luerl decoded terms can be added here or else it will SPECTACULARLY FAIL
+@external(erlang, "glua_ffi", "transform")
+fn transform(a: luerl_value, transformation: Transformation) -> dynamic.Dynamic
 
+/// Internally in luerl, when a `Value` is decoded it has proplists and difficult to decode functions.
+/// This poses some problems; proplists make decoding difficult and erlang functions are hard to decode in gleam.
+///
+/// Glua has decided to greatly improve type safety at a marginal performance cost.
+/// If you wish to remove these transformations for whatever reason, you may use the functions that accepts a `Transformation`.
 pub type Transformation {
-  NoTransform
-  /// Default
-  ProplistTransform
+  Transformation(
+    /// If true, transforms proplists (ex. `[#("key", "value")]`) into dicts
+    proplist: Bool,
+    /// If true, transforms functions to `LuaFunc`s making them callable with glua
+    func: Bool,
+  )
 }
+
+pub const default_transformation = Transformation(proplist: True, func: True)
 
 /// The decoder will always receive a list of values
 pub fn dec(
   output: Result(Output, LuaError),
   using decoder: decode.Decoder(a),
 ) -> Result(#(Lua, a), LuaError) {
-  dec_transform(output, decoder, ProplistTransform)
+  dec_transform(output, decoder, default_transformation)
 }
 
 pub fn dec_transform(
@@ -272,16 +303,9 @@ pub fn dec_transform(
   transformation tf: Transformation,
 ) {
   use output <- result.try(output)
-  let dyn =
-    do_decode_list(output.refs, output.lua)
-    |> dynamic.list()
-
-  let dyn = case tf {
-    NoTransform -> dyn
-    ProplistTransform -> proplist_to_map(dyn)
-  }
-
-  dyn
+  do_decode_list(output.refs, output.lua)
+  |> list.map(transform(_, tf))
+  |> dynamic.list()
   |> decode.run(decoder)
   |> result.map(pair.new(output.lua, _))
   |> result.map_error(UnexpectedResultType)
@@ -292,7 +316,7 @@ pub fn dec_one(
   output: Result(Output, LuaError),
   using decoder: decode.Decoder(a),
 ) -> Result(#(Lua, a), LuaError) {
-  dec_one_transform(output, decoder, ProplistTransform)
+  dec_one_transform(output, decoder, default_transformation)
 }
 
 /// Assume there will be only one item to decode
@@ -641,21 +665,37 @@ fn do_eval_file(
   path: String,
 ) -> Result(#(Lua, List(ValueRef)), LuaError)
 
-pub fn call_function(
+pub fn call_function_ref(
   state lua: Lua,
   ref fun: ValueRef,
   args args: List(Value),
 ) -> Result(Output, LuaError) {
-  do_call_function(lua, fun, args)
+  do_call_function_ref(lua, fun, args)
   |> result.map(to_output)
 }
 
 @external(erlang, "glua_ffi", "call_function")
-fn do_call_function(
+fn do_call_function_ref(
   lua: Lua,
   fun: ValueRef,
   args: List(Value),
 ) -> Result(#(Lua, List(ValueRef)), LuaError)
+
+@external(erlang, "glua_ffi", "call_enc_function")
+fn do_call_function(
+  lua: Lua,
+  fun: LuaFunc,
+  args: List(Value),
+) -> Result(#(Lua, List(ValueRef)), LuaError)
+
+pub fn call_function(
+  state lua: Lua,
+  func func: LuaFunc,
+  args args: List(Value),
+) -> Result(Output, LuaError) {
+  do_call_function(lua, func, args)
+  |> result.map(to_output)
+}
 
 pub fn call_function_by_name(
   state lua: Lua,
@@ -663,5 +703,5 @@ pub fn call_function_by_name(
   args args: List(Value),
 ) -> Result(Output, LuaError) {
   use fun <- result.try(get(lua, keys))
-  call_function(lua, fun.ref, args)
+  call_function_ref(lua, fun.ref, args)
 }

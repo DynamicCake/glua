@@ -35,7 +35,7 @@ pub fn get_table_test() {
     glua.call_function_by_name(lua, ["cool_numbers"], [])
     |> glua.dec_one_transform(
       using: glua.table_decoder(decode.string, decode.int),
-      transformation: glua.NoTransform,
+      transformation: glua.Transformation(proplist: False, func: False),
     )
 
   assert dict.from_list(table) == dict.from_list(my_table)
@@ -162,7 +162,10 @@ pub fn userdata_test() {
   let assert Ok(lua) = glua.set(lua, ["my_userdata"], glua.userdata(userdata))
   let assert Ok(#(lua, result)) =
     glua.eval(lua, "return my_userdata")
-    |> glua.dec_one_transform(userdata_decoder, glua.NoTransform)
+    |> glua.dec_one_transform(
+      userdata_decoder,
+      glua.Transformation(False, False),
+    )
 
   assert result == userdata
 
@@ -266,7 +269,8 @@ pub fn set_test() {
     #(lua, list.map([count], glua.int))
   }
 
-  let encoded = glua.function_transform(count_odd, glua.NoTransform)
+  let encoded =
+    glua.function_transform(count_odd, glua.Transformation(False, False))
   let assert Ok(lua) = glua.set(glua.new(), ["count_odd"], encoded)
 
   let arg =
@@ -454,26 +458,26 @@ pub fn eval_file_test() {
 }
 
 pub fn call_function_test() {
-  let assert Ok(#(lua, [fun])) =
+  let assert Ok(#(lua, fun)) =
     glua.eval(state: glua.new(), code: "return string.reverse")
-    |> result.map(glua.output_pair)
+    |> glua.dec_one(glua.decode_func())
 
   let encoded = glua.string("auL")
 
   let assert Ok(#(lua, result)) =
-    glua.call_function(state: lua, ref: fun, args: [encoded])
+    glua.call_function(state: lua, func: fun, args: [encoded])
     |> glua.dec_one(using: decode.string)
 
   assert result == "Lua"
 
-  let assert Ok(#(lua, [fun])) =
+  let assert Ok(#(lua, fun)) =
     glua.eval(state: lua, code: "return function(a, b) return a .. b end")
-    |> result.map(glua.output_pair)
+    |> glua.dec(glua.decode_func())
 
   let args = list.map(["Lua in ", "Gleam"], glua.string)
 
   let assert Ok(#(_, result)) =
-    glua.call_function(state: lua, ref: fun, args:)
+    glua.call_function(state: lua, func: fun, args:)
     |> glua.dec_one(using: decode.string)
 
   assert result == "Lua in Gleam"
@@ -482,27 +486,27 @@ pub fn call_function_test() {
 pub fn call_function_returns_proper_errors_test() {
   let state = glua.new()
 
-  let assert Ok(#(state, [ref])) =
+  let assert Ok(#(state, func)) =
     glua.eval(state:, code: "return string.upper")
-    |> result.map(glua.output_pair)
+    |> glua.dec_one(glua.decode_func())
 
   let arg = glua.string("Hello from Gleam!")
 
-  assert glua.call_function(state:, ref:, args: [arg])
+  assert glua.call_function(state:, func:, args: [arg])
     |> glua.dec_one(using: decode.int)
     == Error(
       glua.UnexpectedResultType([decode.DecodeError("Int", "String", ["0"])]),
     )
 
-  let assert Ok(#(lua, [ref])) =
+  let assert Ok(#(lua, func)) =
     glua.eval(state:, code: "return 1")
-    |> result.map(glua.output_pair)
+    |> glua.dec_one(glua.decode_func())
 
   let assert Error(glua.LuaRuntimeException(
     exception: glua.UndefinedFunction(value:),
     state: _,
   )) =
-    glua.call_function(state: lua, ref:, args: [])
+    glua.call_function(state: lua, func:, args: [])
     |> glua.dec_one(using: decode.string)
 
   assert value == "1"
@@ -533,16 +537,16 @@ pub fn call_function_by_name_test() {
 pub fn nested_function_references_test() {
   let code = "return function() return math.sqrt end"
 
-  let assert Ok(#(lua, [ref])) =
+  let assert Ok(#(lua, func)) =
     glua.eval(state: glua.new(), code:)
-    |> result.map(glua.output_pair)
-  let assert Ok(#(lua, [ref])) =
-    glua.call_function(state: lua, ref:, args: [])
-    |> result.map(glua.output_pair)
+    |> glua.dec_one(glua.decode_func())
+  let assert Ok(#(lua, func)) =
+    glua.call_function(state: lua, func:, args: [])
+    |> glua.dec_one(glua.decode_func())
 
   let arg = glua.int(400)
   let assert Ok(#(_, result)) =
-    glua.call_function(state: lua, ref:, args: [arg])
+    glua.call_function(state: lua, func:, args: [arg])
     |> glua.dec_one(using: decode.float)
   assert result == 20.0
 }
