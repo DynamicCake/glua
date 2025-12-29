@@ -32,6 +32,8 @@ to_gleam(Value) ->
             {error, unknown_error}
     end.
 
+% TODO: Classify(Any)
+
 %% helper to determine if a value is encoded or not
 %% borrowed from https://github.com/tv-labs/lua/blob/main/lib/lua/util.ex#L19-L35
 is_encoded(nil) ->
