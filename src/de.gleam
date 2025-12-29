@@ -43,14 +43,13 @@ pub fn subfield(
 
 pub fn run(
   data: ValueRef,
-  decoder: Decoder(t),
-) -> Result(#(Lua, t), List(DecodeError)) {
-  todo
-  // let #(maybe_invalid_data, errors) = decoder.function(data)
-  // case errors {
-  //   [] -> Ok(maybe_invalid_data)
-  //   [_, ..] -> Error(errors)
-  // }
+  deser: Deserializer(t),
+) -> Result(#(Lua, t), List(DeserializeError)) {
+  let #(maybe_invalid_data, lua, errors) = deser.function(data)
+  case errors {
+    [] -> Ok(#(lua, maybe_invalid_data))
+    [_, ..] -> Error(errors)
+  }
 }
 
 pub fn at(path: List(segment), inner: Decoder(a)) -> Decoder(a) {
