@@ -5,24 +5,28 @@
 
 import gleam/dict.{type Dict}
 import gleam/dynamic
-import gleam/dynamic/decode.{type DecodeError, type Decoder, DecodeError}
+import gleam/dynamic/decode.{type Decoder}
 import gleam/option.{type Option}
 import glua.{type Lua, type Value, type ValueRef}
 
 pub opaque type Deserializer(t) {
-  Deserializer(function: fn(ValueRef) -> #(t, Lua, List(DecodeError)))
+  Deserializer(function: fn(ValueRef) -> #(t, Lua, List(DeserializeError)))
+}
+
+pub type DeserializeError {
+  DeserializeError(expected: String, found: String, path: List(ValueRef))
 }
 
 pub fn field(
-  field_path: glua.ValueRef,
+  field_path: ValueRef,
   field_decoder: Deserializer(t),
   next: fn(t) -> Deserializer(final),
 ) -> Deserializer(final) {
-  Deserializer(function: fn(data) { todo })
+  subfield([field_path], field_decoder, next)
 }
 
 pub fn subfield(
-  field_path: List(name),
+  field_path: List(ValueRef),
   field_decoder: Deserializer(t),
   next: fn(t) -> Deserializer(final),
 ) -> Deserializer(final) {
@@ -42,7 +46,7 @@ pub fn subfield(
 pub fn run(
   data: ValueRef,
   deser: Deserializer(t),
-) -> Result(#(Lua, t), List(DecodeError)) {
+) -> Result(#(Lua, t), List(DeserializeError)) {
   let #(maybe_invalid_data, lua, errors) = deser.function(data)
   case errors {
     [] -> Ok(#(lua, maybe_invalid_data))
@@ -64,10 +68,10 @@ pub fn at(path: List(segment), inner: Deserializer(a)) -> Deserializer(a) {
 fn index(
   path: List(a),
   position: List(a),
-  inner: fn(ValueRef) -> #(b, List(DecodeError)),
+  inner: fn(ValueRef) -> #(b, List(DeserializeError)),
   data: ValueRef,
-  handle_miss: fn(ValueRef, List(a)) -> #(b, List(DecodeError)),
-) -> #(b, List(DecodeError)) {
+  handle_miss: fn(ValueRef, List(a)) -> #(b, List(DeserializeError)),
+) -> #(b, List(DeserializeError)) {
   todo
   // case path {
   //   [] -> {
@@ -99,9 +103,9 @@ fn index(
 fn bare_index(data: ValueRef, key: anything) -> Result(Option(ValueRef), String)
 
 fn push_path(
-  layer: #(t, List(DecodeError)),
+  layer: #(t, List(DeserializeError)),
   path: List(key),
-) -> #(t, List(DecodeError)) {
+) -> #(t, List(DeserializeError)) {
   todo
   // let decoder = one_of(string, [int |> map(int.to_string)])
   // let path =
@@ -126,8 +130,8 @@ pub fn success(state: Lua, data: t) -> Deserializer(t) {
 pub fn de_error(
   expected expected: String,
   found found: ValueRef,
-) -> List(DecodeError) {
-  [DecodeError(expected: expected, found: classify(found), path: [])]
+) -> List(DeserializeError) {
+  [DeserializeError(expected: expected, found: classify(found), path: [])]
 }
 
 @external(erlang, "glua_ffi", "classify")
@@ -179,14 +183,14 @@ pub fn optionally_at(
 
 pub const string: Deserializer(String) = Deserializer(deser_string)
 
-fn deser_string(data: ValueRef) -> #(String, Lua, List(DecodeError)) {
+fn deser_string(data: ValueRef) -> #(String, Lua, List(DeserializeError)) {
   todo
   // run_dynamic_function(data, "String", dynamic_string)
 }
 
 pub const bool: Deserializer(Bool) = Deserializer(deser_bool)
 
-fn deser_bool(data: ValueRef) -> #(Bool, Lua, List(DecodeError)) {
+fn deser_bool(data: ValueRef) -> #(Bool, Lua, List(DeserializeError)) {
   todo
   // case cast(True) == data {
   //   True -> #(True, [])
@@ -200,21 +204,21 @@ fn deser_bool(data: ValueRef) -> #(Bool, Lua, List(DecodeError)) {
 
 pub const int: Deserializer(Int) = Deserializer(deser_int)
 
-fn deser_int(data: ValueRef) -> #(Int, Lua, List(DecodeError)) {
+fn deser_int(data: ValueRef) -> #(Int, Lua, List(DeserializeError)) {
   todo
   // run_dynamic_function(data, "Int", dynamic_int)
 }
 
 pub const float: Deserializer(Float) = Deserializer(deser_float)
 
-fn deser_float(data: ValueRef) -> #(Float, Lua, List(DecodeError)) {
+fn deser_float(data: ValueRef) -> #(Float, Lua, List(DeserializeError)) {
   todo
   // run_dynamic_function(data, "Float", dynamic_float)
 }
 
 pub const value_ref: Deserializer(ValueRef) = Deserializer(decode_dynamic)
 
-fn decode_dynamic(data: ValueRef) -> #(ValueRef, Lua, List(DecodeError)) {
+fn decode_dynamic(data: ValueRef) -> #(ValueRef, Lua, List(DeserializeError)) {
   #(data, todo, [])
 }
 
@@ -224,7 +228,7 @@ pub const user_defined: Deserializer(dynamic.Dynamic) = Deserializer(
 
 fn deser_user_defined(
   data: ValueRef,
-) -> #(dynamic.Dynamic, Lua, List(DecodeError)) {
+) -> #(dynamic.Dynamic, Lua, List(DeserializeError)) {
   todo
   // run_dynamic_function(data, "BitArray", dynamic_bit_array)
 }
@@ -244,11 +248,12 @@ pub fn list(of inner: Deserializer(a)) -> Deserializer(List(a)) {
 @external(javascript, "../../gleam_stdlib.mjs", "list")
 fn decode_list(
   data: ValueRef,
-  item: fn(ValueRef) -> #(t, List(DecodeError)),
-  push_path: fn(#(t, List(DecodeError)), key) -> #(t, List(DecodeError)),
+  item: fn(ValueRef) -> #(t, List(DeserializeError)),
+  push_path: fn(#(t, List(DeserializeError)), key) ->
+    #(t, List(DeserializeError)),
   index: Int,
   acc: List(t),
-) -> #(List(t), List(DecodeError))
+) -> #(List(t), List(DeserializeError))
 
 pub fn dict(
   key: Deserializer(key),
@@ -294,7 +299,7 @@ pub fn map(decoder: Deserializer(a), transformer: fn(a) -> b) -> Deserializer(b)
 
 pub fn map_errors(
   decoder: Deserializer(a),
-  transformer: fn(List(DecodeError)) -> List(DecodeError),
+  transformer: fn(List(DeserializeError)) -> List(DeserializeError),
 ) -> Deserializer(a) {
   todo
   // Deserializer(function: fn(d) {
@@ -349,9 +354,9 @@ pub fn one_of(
 
 fn run_decoders(
   data: ValueRef,
-  failure: #(a, List(DecodeError)),
+  failure: #(a, List(DeserializeError)),
   decoders: List(Deserializer(a)),
-) -> #(a, List(DecodeError)) {
+) -> #(a, List(DeserializeError)) {
   todo
   // case decoders {
   //   [] -> failure
