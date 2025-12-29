@@ -3,16 +3,14 @@
 //// The main difference is that it can change the state of a lua program due to metatables.
 //// If you do not wish to keep the changed state, discard the new state.
 
-import gleam/dynamic/decode.{type DecodeError, type Decoder}
+import gleam/dict.{type Dict}
+import gleam/dynamic
+import gleam/dynamic/decode.{type DecodeError, type Decoder, DecodeError}
 import gleam/option.{type Option}
 import glua.{type Lua, type Value, type ValueRef}
 
 pub opaque type Deserializer(t) {
-  Deserializer(function: fn(ValueRef) -> #(t, Lua, List(DeserializeError)))
-}
-
-pub type DeserializeError {
-  DeserializeError(expected: String, found: String, path: List(String))
+  Deserializer(function: fn(ValueRef) -> #(t, Lua, List(DecodeError)))
 }
 
 pub fn field(
@@ -25,11 +23,11 @@ pub fn field(
 
 pub fn subfield(
   field_path: List(name),
-  field_decoder: Decoder(t),
-  next: fn(t) -> Decoder(final),
-) -> Decoder(final) {
+  field_decoder: Deserializer(t),
+  next: fn(t) -> Deserializer(final),
+) -> Deserializer(final) {
   todo
-  // Decoder(function: fn(data) {
+  // Deserializer(function: fn(data) {
   //   let #(out, errors1) =
   //     index(field_path, [], field_decoder.function, data, fn(data, position) {
   //       let #(default, _) = field_decoder.function(data)
@@ -44,7 +42,7 @@ pub fn subfield(
 pub fn run(
   data: ValueRef,
   deser: Deserializer(t),
-) -> Result(#(Lua, t), List(DeserializeError)) {
+) -> Result(#(Lua, t), List(DecodeError)) {
   let #(maybe_invalid_data, lua, errors) = deser.function(data)
   case errors {
     [] -> Ok(#(lua, maybe_invalid_data))
@@ -52,14 +50,15 @@ pub fn run(
   }
 }
 
-pub fn at(path: List(segment), inner: Decoder(a)) -> Decoder(a) {
-  Decoder(function: fn(data) {
-    index(path, [], inner.function, data, fn(data, position) {
-      let #(default, _) = inner.function(data)
-      #(default, [DecodeError("Field", "Nothing", [])])
-      |> push_path(list.reverse(position))
-    })
-  })
+pub fn at(path: List(segment), inner: Deserializer(a)) -> Deserializer(a) {
+  todo
+  // Deserializer(function: fn(data) {
+  //   index(path, [], inner.function, data, fn(data, position) {
+  //     let #(default, _) = inner.function(data)
+  //     #(default, [DecodeError("Field", "Nothing", [])])
+  //     |> push_path(list.reverse(position))
+  //   })
+  // })
 }
 
 fn index(
@@ -127,8 +126,8 @@ pub fn success(state: Lua, data: t) -> Deserializer(t) {
 pub fn de_error(
   expected expected: String,
   found found: ValueRef,
-) -> List(DeserializeError) {
-  [DeserializeError(expected: expected, found: classify(found), path: [])]
+) -> List(DecodeError) {
+  [DecodeError(expected: expected, found: classify(found), path: [])]
 }
 
 @external(erlang, "glua_ffi", "classify")
@@ -137,11 +136,11 @@ pub fn classify(a: anything) -> String
 pub fn optional_field(
   key: name,
   default: t,
-  field_decoder: Decoder(t),
-  next: fn(t) -> Decoder(final),
-) -> Decoder(final) {
+  field_decoder: Deserializer(t),
+  next: fn(t) -> Deserializer(final),
+) -> Deserializer(final) {
   todo
-  // Decoder(function: fn(data) {
+  // Deserializer(function: fn(data) {
   //   let #(out, errors1) =
   //     case bare_index(data, key) {
   //       Ok(Some(data)) -> field_decoder.function(data)
@@ -159,18 +158,18 @@ pub fn optional_field(
 pub fn optionally_at(
   path: List(segment),
   default: a,
-  inner: Decoder(a),
-) -> Decoder(a) {
+  inner: Deserializer(a),
+) -> Deserializer(a) {
   todo
-  // Decoder(function: fn(data) {
+  // Deserializer(function: fn(data) {
   //   index(path, [], inner.function, data, fn(_, _) { #(default, []) })
   // })
 }
 
 // fn run_dynamic_function(
-//   data: Dynamic,
+//   data: ValueRef,
 //   name: String,
-//   f: fn(Dynamic) -> Result(t, t),
+//   f: fn(ValueRef) -> Result(t, t),
 // ) -> #(t, List(DecodeError)) {
 //   case f(data) {
 //     Ok(data) -> #(data, [])
@@ -178,16 +177,16 @@ pub fn optionally_at(
 //   }
 // }
 
-pub const string: Decoder(String) = Decoder(decode_string)
+pub const string: Deserializer(String) = Deserializer(deser_string)
 
-fn decode_string(data: Dynamic) -> #(String, List(DecodeError)) {
+fn deser_string(data: ValueRef) -> #(String, Lua, List(DecodeError)) {
   todo
   // run_dynamic_function(data, "String", dynamic_string)
 }
 
-pub const bool: Decoder(Bool) = Decoder(decode_bool)
+pub const bool: Deserializer(Bool) = Deserializer(deser_bool)
 
-fn decode_bool(data: Dynamic) -> #(Bool, List(DecodeError)) {
+fn deser_bool(data: ValueRef) -> #(Bool, Lua, List(DecodeError)) {
   todo
   // case cast(True) == data {
   //   True -> #(True, [])
@@ -199,115 +198,117 @@ fn decode_bool(data: Dynamic) -> #(Bool, List(DecodeError)) {
   // }
 }
 
-pub const int: Decoder(Int) = Decoder(decode_int)
+pub const int: Deserializer(Int) = Deserializer(deser_int)
 
-fn decode_int(data: Dynamic) -> #(Int, List(DecodeError)) {
+fn deser_int(data: ValueRef) -> #(Int, Lua, List(DecodeError)) {
   todo
   // run_dynamic_function(data, "Int", dynamic_int)
 }
 
-@external(erlang, "gleam_stdlib", "int")
-@external(javascript, "../../gleam_stdlib.mjs", "int")
-fn dynamic_int(data: Dynamic) -> Result(Int, Int)
+pub const float: Deserializer(Float) = Deserializer(deser_float)
 
-pub const float: Decoder(Float) = Decoder(decode_float)
-
-fn decode_float(data: Dynamic) -> #(Float, List(DecodeError)) {
-  run_dynamic_function(data, "Float", dynamic_float)
+fn deser_float(data: ValueRef) -> #(Float, Lua, List(DecodeError)) {
+  todo
+  // run_dynamic_function(data, "Float", dynamic_float)
 }
-
-@external(erlang, "gleam_stdlib", "float")
-@external(javascript, "../../gleam_stdlib.mjs", "float")
-fn dynamic_float(data: Dynamic) -> Result(Float, Float)
 
 pub const value_ref: Deserializer(ValueRef) = Deserializer(decode_dynamic)
 
 fn decode_dynamic(data: ValueRef) -> #(ValueRef, Lua, List(DecodeError)) {
-  #(data, [])
+  #(data, todo, [])
 }
 
-pub const bit_array: Decoder(BitArray) = Decoder(decode_bit_array)
+pub const user_defined: Deserializer(dynamic.Dynamic) = Deserializer(
+  deser_user_defined,
+)
 
-fn decode_bit_array(data: Dynamic) -> #(BitArray, List(DecodeError)) {
-  run_dynamic_function(data, "BitArray", dynamic_bit_array)
+fn deser_user_defined(
+  data: ValueRef,
+) -> #(dynamic.Dynamic, Lua, List(DecodeError)) {
+  todo
+  // run_dynamic_function(data, "BitArray", dynamic_bit_array)
 }
 
 @external(erlang, "gleam_stdlib", "bit_array")
 @external(javascript, "../../gleam_stdlib.mjs", "bit_array")
-fn dynamic_bit_array(data: Dynamic) -> Result(BitArray, BitArray)
+fn dynamic_bit_array(data: ValueRef) -> Result(BitArray, BitArray)
 
-pub fn list(of inner: Decoder(a)) -> Decoder(List(a)) {
-  Decoder(fn(data) {
-    decode_list(data, inner.function, fn(p, k) { push_path(p, [k]) }, 0, [])
-  })
+pub fn list(of inner: Deserializer(a)) -> Deserializer(List(a)) {
+  todo
+  // Deserializer(fn(data) {
+  //   decode_list(data, inner.function, fn(p, k) { push_path(p, [k]) }, 0, [])
+  // })
 }
 
 @external(erlang, "gleam_stdlib", "list")
 @external(javascript, "../../gleam_stdlib.mjs", "list")
 fn decode_list(
-  data: Dynamic,
-  item: fn(Dynamic) -> #(t, List(DecodeError)),
+  data: ValueRef,
+  item: fn(ValueRef) -> #(t, List(DecodeError)),
   push_path: fn(#(t, List(DecodeError)), key) -> #(t, List(DecodeError)),
   index: Int,
   acc: List(t),
 ) -> #(List(t), List(DecodeError))
 
 pub fn dict(
-  key: Decoder(key),
-  value: Decoder(value),
-) -> Decoder(Dict(key, value)) {
-  Decoder(fn(data) {
-    case decode_dict(data) {
-      Error(_) -> #(dict.new(), decode_error("Dict", data))
-      Ok(dict) ->
-        dict.fold(dict, #(dict.new(), []), fn(a, k, v) {
-          // If there are any errors from previous key-value pairs then we
-          // don't need to run the decoders, instead return the existing acc.
-          case a.1 {
-            [] -> fold_dict(a, k, v, key.function, value.function)
-            [_, ..] -> a
-          }
-        })
-    }
-  })
+  key: Deserializer(key),
+  value: Deserializer(value),
+) -> Deserializer(Dict(key, value)) {
+  todo
+  // Deserializer(fn(data) {
+  //   case decode_dict(data) {
+  //     Error(_) -> #(dict.new(), decode_error("Dict", data))
+  //     Ok(dict) ->
+  //       dict.fold(dict, #(dict.new(), []), fn(a, k, v) {
+  //         // If there are any errors from previous key-value pairs then we
+  //         // don't need to run the decoders, instead return the existing acc.
+  //         case a.1 {
+  //           [] -> fold_dict(a, k, v, key.function, value.function)
+  //           [_, ..] -> a
+  //         }
+  //       })
+  //   }
+  // })
 }
 
-@external(erlang, "gleam_stdlib", "dict")
-@external(javascript, "../../gleam_stdlib.mjs", "dict")
-fn decode_dict(data: Dynamic) -> Result(Dict(Dynamic, Dynamic), Nil)
-
-pub fn optional(inner: Decoder(a)) -> Decoder(Option(a)) {
-  Decoder(function: fn(data) {
-    case is_null(data) {
-      True -> #(option.None, [])
-      False -> {
-        let #(data, errors) = inner.function(data)
-        #(option.Some(data), errors)
-      }
-    }
-  })
+pub fn optional(inner: Deserializer(a)) -> Deserializer(Option(a)) {
+  todo
+  // Deserializer(function: fn(data) {
+  //   case is_null(data) {
+  //     True -> #(option.None, [])
+  //     False -> {
+  //       let #(data, errors) = inner.function(data)
+  //       #(option.Some(data), errors)
+  //     }
+  //   }
+  // })
 }
 
-pub fn map(decoder: Decoder(a), transformer: fn(a) -> b) -> Decoder(b) {
-  Decoder(function: fn(d) {
-    let #(data, errors) = decoder.function(d)
-    #(transformer(data), errors)
-  })
+pub fn map(decoder: Deserializer(a), transformer: fn(a) -> b) -> Deserializer(b) {
+  todo
+  // Deserializer(function: fn(d) {
+  //   let #(data, errors) = decoder.function(d)
+  //   #(transformer(data), errors)
+  // })
 }
 
 pub fn map_errors(
-  decoder: Decoder(a),
+  decoder: Deserializer(a),
   transformer: fn(List(DecodeError)) -> List(DecodeError),
-) -> Decoder(a) {
-  Decoder(function: fn(d) {
-    let #(data, errors) = decoder.function(d)
-    #(data, transformer(errors))
-  })
+) -> Deserializer(a) {
+  todo
+  // Deserializer(function: fn(d) {
+  //   let #(data, errors) = decoder.function(d)
+  //   #(data, transformer(errors))
+  // })
 }
 
-pub fn collapse_errors(decoder: Decoder(a), name: String) -> Decoder(a) {
+pub fn collapse_errors(
+  decoder: Deserializer(a),
+  name: String,
+) -> Deserializer(a) {
   todo
-  // Decoder(function: fn(dynamic_data) {
+  // Deserializer(function: fn(dynamic_data) {
   //   let #(data, errors) as layer = decoder.function(dynamic_data)
   //   case errors {
   //     [] -> layer
@@ -316,55 +317,62 @@ pub fn collapse_errors(decoder: Decoder(a), name: String) -> Decoder(a) {
   // })
 }
 
-pub fn then(decoder: Decoder(a), next: fn(a) -> Decoder(b)) -> Decoder(b) {
-  Decoder(function: fn(dynamic_data) {
-    let #(data, errors) = decoder.function(dynamic_data)
-    let decoder = next(data)
-    let #(data, _) as layer = decoder.function(dynamic_data)
-    case errors {
-      [] -> layer
-      [_, ..] -> #(data, errors)
-    }
-  })
+pub fn then(
+  decoder: Deserializer(a),
+  next: fn(a) -> Deserializer(b),
+) -> Deserializer(b) {
+  todo
+  // Deserializer(function: fn(dynamic_data) {
+  //   let #(data, errors) = decoder.function(dynamic_data)
+  //   let decoder = next(data)
+  //   let #(data, _) as layer = decoder.function(dynamic_data)
+  //   case errors {
+  //     [] -> layer
+  //     [_, ..] -> #(data, errors)
+  //   }
+  // })
 }
 
 pub fn one_of(
-  first: Decoder(a),
-  or alternatives: List(Decoder(a)),
-) -> Decoder(a) {
-  Decoder(function: fn(dynamic_data) {
-    let #(_, errors) as layer = first.function(dynamic_data)
-    case errors {
-      [] -> layer
-      [_, ..] -> run_decoders(dynamic_data, layer, alternatives)
-    }
-  })
+  first: Deserializer(a),
+  or alternatives: List(Deserializer(a)),
+) -> Deserializer(a) {
+  todo
+  // Deserializer(function: fn(dynamic_data) {
+  //   let #(_, errors) as layer = first.function(dynamic_data)
+  //   case errors {
+  //     [] -> layer
+  //     [_, ..] -> run_decoders(dynamic_data, layer, alternatives)
+  //   }
+  // })
 }
 
 fn run_decoders(
-  data: Dynamic,
+  data: ValueRef,
   failure: #(a, List(DecodeError)),
-  decoders: List(Decoder(a)),
+  decoders: List(Deserializer(a)),
 ) -> #(a, List(DecodeError)) {
-  case decoders {
-    [] -> failure
-
-    [decoder, ..decoders] -> {
-      let #(_, errors) as layer = decoder.function(data)
-      case errors {
-        [] -> layer
-        [_, ..] -> run_decoders(data, failure, decoders)
-      }
-    }
-  }
+  todo
+  // case decoders {
+  //   [] -> failure
+  //
+  //   [decoder, ..decoders] -> {
+  //     let #(_, errors) as layer = decoder.function(data)
+  //     case errors {
+  //       [] -> layer
+  //       [_, ..] -> run_decoders(data, failure, decoders)
+  //     }
+  //   }
+  // }
 }
 
-pub fn failure(zero: a, expected: String) -> Decoder(a) {
-  Decoder(function: fn(d) { #(zero, decode_error(expected, d)) })
+pub fn failure(zero: a, expected: String) -> Deserializer(a) {
+  todo
+  // Deserializer(function: fn(d) { #(zero, glua.new(), deser_error(expected, d)) })
 }
 
-pub fn recursive(inner: fn() -> Decoder(a)) -> Decoder(a) {
-  Decoder(function: fn(data) {
+pub fn recursive(inner: fn() -> Deserializer(a)) -> Deserializer(a) {
+  Deserializer(function: fn(data) {
     let decoder = inner()
     decoder.function(data)
   })
