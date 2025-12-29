@@ -32,10 +32,31 @@ to_gleam(Value) ->
             {error, unknown_error}
     end.
 
-% TODO: Classify(Any)
+classify(nil) ->
+    "Nil";
+classify(Bool) when is_boolean(Bool) ->
+    "Bool";
+classify(N) when is_number(N) ->
+    "Number";
+classify({tref,_}) ->
+    "Table";
+classify({usrdef,_}) ->
+    "UserDef";
+classify({eref,_}) ->
+    "Unknown";
+classify({funref,_,_}) ->
+    "Function";
+classify({erl_func,_}) ->
+    "Function";
+classify({erl_mfa,_,_,_}) ->
+    "Function";
+classify(_) ->
+    "Unknown".
+
 
 %% helper to determine if a value is encoded or not
-%% borrowed from https://github.com/tv-labs/lua/blob/main/lib/lua/util.ex#L19-L35
+%% borrowed from https://github.com/tv-labs/lua/blob/5bf2069c2bd0b8f19ae8f3ea1e6947a44c3754d8/lib/lua/util.ex#L19-L35
+%% Also see (luerl 1.5.1): https://hexdocs.pm/luerl/luerl.html#t:luerldata/0
 is_encoded(nil) ->
     true;
 is_encoded(true) ->
@@ -50,8 +71,10 @@ is_encoded({tref,_}) ->
     true;
 is_encoded({usrdef,_}) ->
     true;
+% Rationale: https://github.com/rvirding/luerl/blob/8756287ed2083795e7456855edf56a065a49b5aa/src/luerl.erl#L924-L939
+% has no mentions of eref
 is_encoded({eref,_}) ->
-    true;
+    false;
 is_encoded({funref,_,_}) ->
     true;
 is_encoded({erl_func,_}) ->
