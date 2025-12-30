@@ -218,6 +218,9 @@ call_function(Lua, Fun, Args) ->
     {EncodedArgs, State} = encode_list(Args, Lua),
     to_gleam(luerl:call(Fun, EncodedArgs, State)).
 
+ref_call_function(Lua, Func, Args) ->
+    to_gleam(luerl:call(Fun, Args, Lua)).
+
 call_function_dec(Lua, Fun, Args) ->
     {EncodedArgs, St1} = encode_list(Args, Lua),
     case luerl:call(Fun, EncodedArgs, St1) of
