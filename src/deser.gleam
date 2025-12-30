@@ -6,7 +6,9 @@
 import gleam/dict.{type Dict}
 import gleam/dynamic
 import gleam/dynamic/decode.{type Decoder}
+import gleam/list
 import gleam/option.{type Option}
+import gleam/string
 import glua.{type Lua, type Value, type ValueRef}
 
 pub opaque type Deserializer(t) {
@@ -14,7 +16,7 @@ pub opaque type Deserializer(t) {
 }
 
 pub type DeserializeError {
-  DeserializeError(expected: String, found: String, path: List(ValueRef))
+  DeserializeError(expected: RefType, found: RefType, path: List(ValueRef))
 }
 
 pub fn field(
@@ -40,28 +42,6 @@ pub fn subfield(
   //     })
   //   let #(out, errors2) = next(out).function(data)
   //   #(out, list.append(errors1, errors2))
-  // })
-}
-
-pub fn run(
-  data: ValueRef,
-  deser: Deserializer(t),
-) -> Result(#(Lua, t), List(DeserializeError)) {
-  let #(maybe_invalid_data, lua, errors) = deser.function(data)
-  case errors {
-    [] -> Ok(#(lua, maybe_invalid_data))
-    [_, ..] -> Error(errors)
-  }
-}
-
-pub fn at(path: List(segment), inner: Deserializer(a)) -> Deserializer(a) {
-  todo
-  // Deserializer(function: fn(data) {
-  //   index(path, [], inner.function, data, fn(data, position) {
-  //     let #(default, _) = inner.function(data)
-  //     #(default, [DecodeError("Field", "Nothing", [])])
-  //     |> push_path(list.reverse(position))
-  //   })
   // })
 }
 
@@ -98,44 +78,91 @@ fn index(
   // }
 }
 
+pub fn run(
+  data: ValueRef,
+  deser: Deserializer(t),
+) -> Result(#(Lua, t), List(DeserializeError)) {
+  let #(maybe_invalid_data, lua, errors) = deser.function(data)
+  case errors {
+    [] -> Ok(#(lua, maybe_invalid_data))
+    [_, ..] -> Error(errors)
+  }
+}
+
+pub fn at(path: List(segment), inner: Deserializer(a)) -> Deserializer(a) {
+  todo
+  // Deserializer(function: fn(data) {
+  //   index(path, [], inner.function, data, fn(data, position) {
+  //     let #(default, _) = inner.function(data)
+  //     #(default, [DecodeError("Field", "Nothing", [])])
+  //     |> push_path(list.reverse(position))
+  //   })
+  // })
+}
+
+@external(erlang, "luerl", "decode")
+fn decode(val: ValueRef, state: Lua) -> a
+
 @external(erlang, "gleam_stdlib", "index")
 @external(javascript, "../../gleam_stdlib.mjs", "index")
 fn bare_index(data: ValueRef, key: anything) -> Result(Option(ValueRef), String)
 
+fn to_string(lua: Lua, val: ValueRef) {
+  case classify(val) {
+    Null -> "<nil>"
+    Number -> decode(val, lua)
+    String -> decode(val, lua)
+    Unknown -> "<unknown>"
+    UserDef -> "userdefined: " <> string.inspect(val)
+    _ -> {
+      {
+        case glua.ref_call_function_by_name(lua, ["tostring"], [val]) {
+          Ok(#(lua, [value])) -> {
+            todo as "deserialize value"
+          }
+          Error(err) -> "<tostring failure (" <> string.inspect(err) <> ")>"
+          _ -> "<tostring failure>"
+        }
+      }
+    }
+  }
+}
+
+pub type RefType {
+  Null
+  Bool
+  Number
+  String
+  Table
+  UserDef
+  Function
+  Unknown
+}
+
 fn push_path(
   layer: #(t, List(DeserializeError)),
-  path: List(key),
+  path: List(ValueRef),
 ) -> #(t, List(DeserializeError)) {
-  todo
-  // let decoder = one_of(string, [int |> map(int.to_string)])
-  // let path =
-  //   list.map(path, fn(key) {
-  //     let key = cast(key)
-  //     case run(key, decoder) {
-  //       Ok(key) -> key
-  //       Error(_) -> "<" <> dynamic.classify(key) <> ">"
-  //     }
-  //   })
-  // let errors =
-  //   list.map(layer.1, fn(error) {
-  //     DecodeError(..error, path: list.append(path, error.path))
-  //   })
-  // #(layer.0, errors)
+  let errors =
+    list.map(layer.1, fn(error) {
+      DeserializeError(..error, path: list.append(path, error.path))
+    })
+  #(layer.0, errors)
 }
 
 pub fn success(state: Lua, data: t) -> Deserializer(t) {
   Deserializer(function: fn(_) { #(data, state, []) })
 }
 
-pub fn de_error(
-  expected expected: String,
+pub fn deser_error(
+  expected expected: RefType,
   found found: ValueRef,
 ) -> List(DeserializeError) {
   [DeserializeError(expected: expected, found: classify(found), path: [])]
 }
 
 @external(erlang, "glua_ffi", "classify")
-pub fn classify(a: anything) -> String
+pub fn classify(a: anything) -> RefType
 
 pub fn optional_field(
   key: name,

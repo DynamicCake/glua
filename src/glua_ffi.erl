@@ -33,25 +33,27 @@ to_gleam(Value) ->
     end.
 
 classify(nil) ->
-    "Nil";
+    null;
 classify(Bool) when is_boolean(Bool) ->
-    "Bool";
+    bool;
+is_encoded(Binary) when is_binary(Binary) ->
+    string;
 classify(N) when is_number(N) ->
-    "Number";
+    number;
 classify({tref,_}) ->
-    "Table";
+    table;
 classify({usrdef,_}) ->
-    "UserDef";
+    user_def;
 classify({eref,_}) ->
-    "Unknown";
+    unknown;
 classify({funref,_,_}) ->
-    "Function";
+    function;
 classify({erl_func,_}) ->
-    "Function";
+    function;
 classify({erl_mfa,_,_,_}) ->
-    "Function";
+    function;
 classify(_) ->
-    "Unknown".
+    unknown.
 
 
 %% helper to determine if a value is encoded or not
@@ -218,7 +220,7 @@ call_function(Lua, Fun, Args) ->
     {EncodedArgs, State} = encode_list(Args, Lua),
     to_gleam(luerl:call(Fun, EncodedArgs, State)).
 
-ref_call_function(Lua, Func, Args) ->
+ref_call_function(Lua, Fun, Args) ->
     to_gleam(luerl:call(Fun, Args, Lua)).
 
 call_function_dec(Lua, Fun, Args) ->
