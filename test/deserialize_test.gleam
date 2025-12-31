@@ -66,3 +66,26 @@ pub fn subfield_ok_test() {
     })
   assert val == "Puffy"
 }
+
+pub fn field_metatable_test() {
+  let lua = glua.new()
+  let #(lua, data) = glua.alloc_table(lua, [])
+  let metatable =
+    glua.table([
+      #(
+        glua.string("__index"),
+        glua.function(fn(lua, _args) { #(lua, [glua.string("pong")]) }),
+      ),
+    ])
+  let assert Ok(#(lua, [table])) =
+    glua.call_function_by_name(lua, ["setmetatable"], [data, metatable])
+  let assert Ok(#(_lua, val)) =
+    deser.run(lua, table, {
+      use pong <- deser.field(
+        glua.str_ref("aasdlkjghasddlkjghasddklgjh;ksjdh"),
+        deser.string,
+      )
+      deser.success(pong)
+    })
+  assert val == "pong"
+}
