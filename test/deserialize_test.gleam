@@ -28,7 +28,11 @@ pub fn decoder_test() {
 
 pub fn field_ok_test() {
   let lua = glua.new()
-  let data = glua.table([#(glua.string("name"), glua.string("Hina"))])
+  let data =
+    glua.table([
+      #(glua.string("red herring"), glua.string("not here!")),
+      #(glua.string("name"), glua.string("Hina")),
+    ])
   let #(ref, lua) = encode(data, lua)
   let assert Ok(#(_lua, val)) =
     deser.run(lua, ref, {
@@ -36,4 +40,29 @@ pub fn field_ok_test() {
       deser.success(str)
     })
   assert val == "Hina"
+}
+
+pub fn subfield_ok_test() {
+  let lua = glua.new()
+  let data =
+    glua.table([
+      #(glua.string("name"), glua.string("Hina")),
+      #(
+        glua.string("friends"),
+        glua.table([
+          #(glua.int(1), glua.string("Puffy")),
+          #(glua.int(2), glua.string("Lucy")),
+        ]),
+      ),
+    ])
+  let #(ref, lua) = encode(data, lua)
+  let assert Ok(#(_lua, val)) =
+    deser.run(lua, ref, {
+      use first <- deser.subfield(
+        [glua.str_ref("friends"), glua.int_ref(1)],
+        deser.string,
+      )
+      deser.success(first)
+    })
+  assert val == "Puffy"
 }

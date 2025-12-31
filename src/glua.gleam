@@ -55,6 +55,9 @@ pub type ValueRef
 @external(erlang, "glua_ffi", "coerce")
 pub fn str_ref(str: String) -> ValueRef
 
+@external(erlang, "glua_ffi", "coerce")
+pub fn int_ref(str: Int) -> ValueRef
+
 @external(erlang, "glua_ffi", "coerce_nil")
 pub fn nil() -> Value
 
