@@ -168,25 +168,35 @@ pub fn deser_error(
 pub fn classify(a: anything) -> String
 
 pub fn optional_field(
-  key: name,
+  key: ValueRef,
   default: t,
   field_decoder: Deserializer(t),
   next: fn(t) -> Deserializer(final),
 ) -> Deserializer(final) {
-  todo
-  // Deserializer(function: fn(data) {
-  //   let #(out, errors1) =
-  //     case bare_index(data, key) {
-  //       Ok(Some(data)) -> field_decoder.function(data)
-  //       Ok(None) -> #(default, [])
-  //       Error(kind) -> #(default, [
-  //         DecodeError(kind, dynamic.classify(data), []),
-  //       ])
-  //     }
-  //     |> push_path([key])
-  //   let #(out, errors2) = next(out).function(data)
-  //   #(out, list.append(errors1, errors2))
-  // })
+  Deserializer(function: fn(lua, data) {
+    let #(out, lua, errors1) =
+      case get_table_key(lua, data, key) {
+        Ok(#(lua, data)) -> {
+          field_decoder.function(lua, data)
+        }
+        // NOTE: I don't feel comfortable matching on this
+        Error(glua.KeyNotFound)
+        | Error(glua.LuaRuntimeException(
+            exception: glua.IllegalIndex(_, _),
+            state: _,
+          )) -> {
+          #(default, lua, [])
+        }
+        Error(_err) -> {
+          #(default, lua, [
+            DeserializeError("Table", classify(data), []),
+          ])
+        }
+      }
+      |> push_path([key])
+    let #(out, lua, errors2) = next(out).function(lua, data)
+    #(out, lua, list.append(errors1, errors2))
+  })
 }
 
 pub fn optionally_at(

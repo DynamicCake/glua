@@ -124,3 +124,30 @@ pub fn optionally_at_ok_test() {
     )
   assert "miss" == miss
 }
+
+pub fn optional_field_ok_test() {
+  let lua = glua.new()
+  let #(lua, table) =
+    glua.table(lua, [#(glua.string("bullseye"), glua.string("hit"))])
+  let assert Ok(#(_lua, hit)) =
+    deser.run(lua, table, {
+      use hit <- deser.optional_field(
+        glua.string("bullseye"),
+        "doh i missed",
+        deser.string,
+      )
+      deser.success(hit)
+    })
+  assert hit == "hit"
+  let assert Ok(#(_lua, miss)) =
+    deser.run(lua, table, {
+      use hit <- deser.optional_field(
+        glua.string("bull'seye"),
+        "doh i missed",
+        deser.string,
+      )
+      deser.success(hit)
+    })
+
+  assert miss == "doh i missed"
+}
