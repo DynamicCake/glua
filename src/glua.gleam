@@ -52,6 +52,9 @@ pub type Value
 /// that will return references to the values instead of decoding them.
 pub type ValueRef
 
+@external(erlang, "glua_ffi", "coerce")
+pub fn str_ref(str: String) -> ValueRef
+
 @external(erlang, "glua_ffi", "coerce_nil")
 pub fn nil() -> Value
 

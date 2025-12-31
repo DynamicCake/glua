@@ -46,7 +46,7 @@ pub fn subfield(
         field_decoder.function,
         data,
         fn(lua, data, position) {
-          let #(default, _lua, _) = field_decoder.function(lua, data)
+          let #(default, lua, _) = field_decoder.function(lua, data)
           #(default, lua, [DeserializeError("Field", "Nothing", [])])
           |> push_path(list.reverse(position))
         },
@@ -113,10 +113,6 @@ pub fn at(path: List(segment), inner: Deserializer(a)) -> Deserializer(a) {
   // })
 }
 
-@external(erlang, "gleam_stdlib", "index")
-@external(javascript, "../../gleam_stdlib.mjs", "index")
-fn bare_index(data: ValueRef, key: anything) -> Result(Option(ValueRef), String)
-
 @external(erlang, "glua_ffi", "get_table_key")
 fn get_table_key(
   lua: Lua,
@@ -155,8 +151,8 @@ fn push_path(layer: Return(t), path: List(ValueRef)) -> Return(t) {
   #(layer.0, layer.1, errors)
 }
 
-pub fn success(state: Lua, data: t) -> Deserializer(t) {
-  Deserializer(function: fn(_, _) { #(data, state, []) })
+pub fn success(data: t) -> Deserializer(t) {
+  Deserializer(function: fn(lua, _) { #(data, lua, []) })
 }
 
 pub fn deser_error(

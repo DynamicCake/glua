@@ -160,7 +160,7 @@ sandbox_fun(Msg) ->
 
 
 get_table_key(Lua, Table, Key) ->
-    case luerl:get_table_keys(Table, Key, Lua) of
+    case luerl:get_table_key(Table, Key, Lua) of
         {ok, nil, _} ->
             {error, nil};
         {ok, Value, Lua} ->
