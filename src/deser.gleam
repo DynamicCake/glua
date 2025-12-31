@@ -11,7 +11,7 @@ import gleam/option.{type Option, None, Some}
 import gleam/pair
 import gleam/result
 import gleam/string
-import glua.{type Lua, type Value, type ValueRef}
+import glua.{type Lua, type ValueRef}
 
 pub opaque type Deserializer(t) {
   Deserializer(function: fn(Lua, ValueRef) -> Return(t))
@@ -77,10 +77,14 @@ fn index(
           index(lua, path, [key, ..position], inner, data, handle_miss)
         }
         // NOTE: I don't feel comfortable matching on this
-        Error(glua.KeyNotFound) -> {
+        Error(glua.KeyNotFound)
+        | Error(glua.LuaRuntimeException(
+            exception: glua.IllegalIndex(_, _),
+            state: _,
+          )) -> {
           handle_miss(lua, data, [key, ..position])
         }
-        Error(_err) -> {
+        Error(err) -> {
           let #(default, lua, _) = inner(lua, data)
           #(default, lua, [DeserializeError("Table", classify(data), [])])
           |> push_path(list.reverse(position))
@@ -129,7 +133,7 @@ fn to_string(lua: Lua, val: ValueRef) {
     "UserDef" -> "userdefined: " <> string.inspect(val)
     _ -> {
       {
-        case glua.ref_call_function_by_name(lua, ["tostring"], [val]) {
+        case glua.call_function_by_name(lua, ["tostring"], [val]) {
           Ok(#(lua, [value])) -> {
             run(lua, value, string)
             |> result.map(pair.second)
@@ -245,8 +249,22 @@ pub const user_defined: Deserializer(dynamic.Dynamic) = Deserializer(
   deser_user_defined,
 )
 
+@external(erlang, "glua_ffi", "unwrap_userdata")
+fn unwrap_userdata(a: userdata) -> Result(dynamic.Dynamic, Nil)
+
 fn deser_user_defined(lua, data: ValueRef) -> Return(dynamic.Dynamic) {
-  run_dynamic_function(lua, data, "UserDef", dynamic.nil())
+  let ret = run_dynamic_function(lua, data, "UserDef", dynamic.nil())
+  let #(dyn, lua, errs) = ret
+  case errs {
+    [] ->
+      case unwrap_userdata(dyn) {
+        Ok(dyn) -> #(dyn, lua, [])
+        Error(Nil) -> #(dynamic.nil(), lua, [
+          DeserializeError("UserDef", classify(data), []),
+        ])
+      }
+    _ -> ret
+  }
 }
 
 pub fn list(of inner: Deserializer(a)) -> Deserializer(List(a)) {

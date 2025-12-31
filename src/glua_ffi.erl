@@ -2,10 +2,9 @@
 
 -import(luerl_lib, [lua_error/2]).
 
--export([coerce/1, coerce_nil/0, coerce_userdata/1, wrap_fun/1, sandbox_fun/1, get_table_keys/2, get_table_keys_dec/2, get_table_key/3,
-         get_private/2, set_table_keys/3, load/2, load_file/2, eval/2, eval_dec/2, eval_file/2,
-         eval_file_dec/2, eval_chunk/2, eval_chunk_dec/2, call_function/3, call_function_dec/3,
-         alloc/2, classify/1, ref_call_function/3]).
+-export([coerce/1, coerce_nil/0, coerce_userdata/1, wrap_fun/2, sandbox_fun/1, get_table_keys/2, get_table_keys_dec/2, get_table_key/3,
+         get_private/2, set_table_keys/3, load/2, load_file/2, eval/2, eval_dec/2, eval_file/2, encode_table/2, encode_userdata/2,
+         eval_file_dec/2, eval_chunk/2, eval_chunk_dec/2, call_function/3, call_function_dec/3, classify/1, unwrap_userdata/1]).
 
 %% turn `{userdata, Data}` into `Data` to make it more easy to decode it in Gleam
 maybe_process_userdata(Lst) when is_list(Lst) ->
@@ -38,7 +37,7 @@ classify(Bool) when is_boolean(Bool) ->
     <<"Bool">>;
 classify(Binary) when is_binary(Binary) ->
     <<"String">>;
-classify(N) when is_float(N) ->
+classify(N) when is_number(N) ->
     <<"Number">>;
 classify({tref,_}) ->
     <<"Table">>;
@@ -125,8 +124,8 @@ map_error({lua_error, {badarith, Operator, Args}, State}) ->
     {lua_runtime_exception, {bad_arith, FormattedOperator, FormattedArgs}, State};
 map_error({lua_error, {assert_error, _} = Error, State}) ->
     {lua_runtime_exception, Error, State};
-map_error({lua_error, _, State}) ->
-    {lua_runtime_exception, unknown_exception, State};
+map_error({lua_error, Dynamic, State}) ->
+    {lua_runtime_exception, {unknown_exception, Dynamic}, State};
 map_error(_) ->
     unknown_error.
 
@@ -139,21 +138,27 @@ coerce_nil() ->
 coerce_userdata(X) ->
     {userdata, X}.
 
-alloc(St0, Value) when is_list(Value) ->
-    {Enc, St1} = luerl_heap:alloc_table(Value, St0),
-    {St1, Enc};
-alloc(St0, {usrdef,_}=Value) ->
-    {Enc, St1} = luerl_heap:alloc_userdata(Value, St0),
-    {St1, Enc};
-alloc(St0, Other) ->
-    {St0, Other}.
+unwrap_userdata({userdata, Data}) ->
+    {ok, Data};
+unwrap_userdata(_) ->
+    {error, nil}.
 
-wrap_fun(Fun) ->
-    fun(Args, State) ->
-            Decoded = luerl:decode_list(Args, State),
-            {NewState, Ret} = Fun(State, Decoded),
-            luerl:encode_list(Ret, NewState)
-    end.
+encode_table(State, Values) ->
+    % io:format("THING ~p~n, ~p~n", [State, Values]),
+    {Data, St} = luerl_heap:alloc_table(Values, State),
+    {St, Data}.
+
+encode_userdata(State, Values) ->
+    {Data, St} = luerl_heap:alloc_userdata(Values, State),
+    {St, Data}.
+
+wrap_fun(State, Fun) ->
+    NewFun = fun(Args, St0) ->
+        {St1, Return} = Fun(St0, Args),
+        {Return, St1}
+    end,
+    {T, St} = luerl:encode(NewFun, State),
+    {St, T}.
 
 sandbox_fun(Msg) ->
     fun(_, State) -> {error, map_error(lua_error({error_call, [Msg]}, State))} end.
@@ -162,7 +167,7 @@ sandbox_fun(Msg) ->
 get_table_key(Lua, Table, Key) ->
     case luerl:get_table_key(Table, Key, Lua) of
         {ok, nil, _} ->
-            {error, nil};
+            {error, key_not_found};
         {ok, Value, Lua} ->
             {ok, {Lua, Value}};
         Other ->
@@ -190,11 +195,7 @@ get_table_keys_dec(Lua, Keys) ->
     end.
 
 set_table_keys(Lua, Keys, Value) ->
-    SetFun = case is_encoded(Value) of
-                 true -> fun luerl:set_table_keys/3;
-                 false -> fun luerl:set_table_keys_dec/3
-             end,
-    to_gleam(SetFun(Keys, Value, Lua)).
+    to_gleam(luerl:set_table_keys(Keys, Value, Lua)).
 
 load(Lua, Code) ->
     to_gleam(luerl:load(
@@ -227,10 +228,6 @@ eval_file_dec(Lua, Path) ->
                  unicode:characters_to_list(Path), Lua)).
 
 call_function(Lua, Fun, Args) ->
-    {EncodedArgs, State} = encode_list(Args, Lua),
-    to_gleam(luerl:call(Fun, EncodedArgs, State)).
-
-ref_call_function(Lua, Fun, Args) ->
     to_gleam(luerl:call(Fun, Args, Lua)).
 
 call_function_dec(Lua, Fun, Args) ->
