@@ -1,5 +1,6 @@
 import deser
 import gleam/dynamic
+import gleam/list
 import glua
 
 @external(erlang, "glua_ffi", "coerce")
@@ -35,6 +36,18 @@ pub fn field_ok_test() {
   assert val == "Hina"
 }
 
+pub fn field_err_test() {
+  let lua = glua.new()
+  let #(lua, data) =
+    glua.table(lua, [#(glua.string("red herring"), glua.string("nope"))])
+  let assert Error([deser.DeserializeError("Field", "Nothing", path)]) =
+    deser.run(lua, data, {
+      use str <- deser.field(glua.string("name"), deser.string)
+      deser.success(str)
+    })
+  assert path == [glua.string("name")]
+}
+
 pub fn subfield_ok_test() {
   let lua = glua.new()
   let #(lua, inner) =
@@ -56,6 +69,29 @@ pub fn subfield_ok_test() {
       deser.success(first)
     })
   assert val == "Puffy"
+}
+
+pub fn subfield_err_test() {
+  let lua = glua.new()
+  let #(lua, inner) =
+    glua.table(lua, [
+      #(glua.int(4), glua.string("Puffy")),
+      #(glua.int(2), glua.string("Lucy")),
+    ])
+  let #(lua, data) =
+    glua.table(lua, [
+      #(glua.string("name"), glua.string("Hina")),
+      #(glua.string("friends"), inner),
+    ])
+  let assert Error([deser.DeserializeError("Field", "Nothing", path)]) =
+    deser.run(lua, data, {
+      use first <- deser.subfield(
+        [glua.string("friends"), glua.int(1)],
+        deser.string,
+      )
+      deser.success(first)
+    })
+  assert path == [glua.string("friends"), glua.int(1)]
 }
 
 pub fn field_metatable_test() {
@@ -94,6 +130,27 @@ pub fn at_ok_test() {
     )
   let assert Ok(#(_lua, hi)) = deser.run(lua, first, third)
   assert hi == "hi"
+}
+
+pub fn at_err_test() {
+  let lua = glua.new()
+  let #(lua, third) =
+    glua.table(lua, [#(glua.string("third"), glua.string("hi"))])
+  let #(lua, second) = glua.table(lua, [#(glua.string("second"), third)])
+  let #(lua, first) = glua.table(lua, [#(glua.string("first"), second)])
+
+  let third =
+    deser.at(
+      [
+        glua.string("first"),
+        glua.string("third"),
+        glua.string("second"),
+      ],
+      deser.string,
+    )
+  let assert Error([deser.DeserializeError("Field", "Nothing", path)]) =
+    deser.run(lua, first, third)
+  assert path == ["first", "third"] |> list.map(glua.string)
 }
 
 pub fn optionally_at_ok_test() {
