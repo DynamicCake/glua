@@ -95,3 +95,32 @@ pub fn at_ok_test() {
   let assert Ok(#(_lua, hi)) = deser.run(lua, first, third)
   assert hi == "hi"
 }
+
+pub fn optionally_at_ok_test() {
+  let lua = glua.new()
+  let #(lua, nest) =
+    glua.table(lua, [#(glua.string("ping"), glua.string("pong"))])
+  let #(lua, table) = glua.table(lua, [#(glua.string("nested"), nest)])
+  let assert Ok(#(_lua, pong)) =
+    deser.run(
+      lua,
+      table,
+      deser.optionally_at(
+        [glua.string("nested"), glua.string("ping")],
+        "miss",
+        deser.string,
+      ),
+    )
+  assert "pong" == pong
+  let assert Ok(#(_lua, miss)) =
+    deser.run(
+      lua,
+      table,
+      deser.optionally_at(
+        [glua.string("nestedd"), glua.string("ping")],
+        "miss",
+        deser.string,
+      ),
+    )
+  assert "miss" == miss
+}

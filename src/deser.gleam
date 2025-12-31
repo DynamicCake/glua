@@ -5,7 +5,6 @@
 
 import gleam/dict.{type Dict}
 import gleam/dynamic
-import gleam/dynamic/decode.{type Decoder}
 import gleam/list
 import gleam/option.{type Option, None, Some}
 import gleam/pair
@@ -191,14 +190,15 @@ pub fn optional_field(
 }
 
 pub fn optionally_at(
-  path: List(segment),
+  path: List(ValueRef),
   default: a,
   inner: Deserializer(a),
 ) -> Deserializer(a) {
-  todo
-  // Deserializer(function: fn(data) {
-  //   index(path, [], inner.function, data, fn(_, _) { #(default, []) })
-  // })
+  Deserializer(function: fn(lua, data) {
+    index(lua, path, [], inner.function, data, fn(_, _, _) {
+      #(default, lua, [])
+    })
+  })
 }
 
 fn run_dynamic_function(

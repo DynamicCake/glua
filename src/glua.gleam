@@ -6,6 +6,7 @@ import gleam/dynamic
 import gleam/dynamic/decode
 import gleam/int
 import gleam/list
+import gleam/pair
 import gleam/result
 import gleam/string
 
@@ -68,6 +69,12 @@ pub fn float(v: Float) -> ValueRef
 
 @external(erlang, "glua_ffi", "encode_table")
 pub fn table(lua: Lua, values: List(#(ValueRef, ValueRef))) -> #(Lua, ValueRef)
+
+pub fn table_list(lua: Lua, values: List(ValueRef)) -> #(Lua, ValueRef) {
+  list.map_fold(values, 1, fn(acc, ref) { #(acc, #(int(acc), ref)) })
+  |> pair.second()
+  |> table(lua, _)
+}
 
 @external(erlang, "glua_ffi", "encode_userdata")
 pub fn userdata(lua: Lua, val: anything) -> #(Lua, ValueRef)
