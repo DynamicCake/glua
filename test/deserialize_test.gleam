@@ -79,3 +79,19 @@ pub fn field_metatable_test() {
     })
   assert val == "pong"
 }
+
+pub fn at_ok_test() {
+  let lua = glua.new()
+  let #(lua, third) =
+    glua.table(lua, [#(glua.string("third"), glua.string("hi"))])
+  let #(lua, second) = glua.table(lua, [#(glua.string("second"), third)])
+  let #(lua, first) = glua.table(lua, [#(glua.string("first"), second)])
+
+  let third =
+    deser.at(
+      [glua.string("first"), glua.string("second"), glua.string("third")],
+      deser.string,
+    )
+  let assert Ok(#(_lua, hi)) = deser.run(lua, first, third)
+  assert hi == "hi"
+}

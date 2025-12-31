@@ -106,15 +106,14 @@ pub fn run(
   }
 }
 
-pub fn at(path: List(segment), inner: Deserializer(a)) -> Deserializer(a) {
-  todo
-  // Deserializer(function: fn(data) {
-  //   index(path, [], inner.function, data, fn(data, position) {
-  //     let #(default, _) = inner.function(data)
-  //     #(default, [DecodeError("Field", "Nothing", [])])
-  //     |> push_path(list.reverse(position))
-  //   })
-  // })
+pub fn at(path: List(ValueRef), inner: Deserializer(a)) -> Deserializer(a) {
+  Deserializer(function: fn(lua, data) {
+    index(lua, path, [], inner.function, data, fn(lua, data, position) {
+      let #(default, lua, _) = inner.function(lua, data)
+      #(default, lua, [DeserializeError("Field", "Nothing", [])])
+      |> push_path(list.reverse(position))
+    })
+  })
 }
 
 @external(erlang, "glua_ffi", "get_table_key")
