@@ -2,7 +2,7 @@
 
 -import(luerl_lib, [lua_error/2]).
 
--export([coerce/1, coerce_nil/0, coerce_userdata/1, wrap_fun/1, sandbox_fun/1, get_table_keys/2, get_table_keys_dec/2,
+-export([coerce/1, coerce_nil/0, coerce_userdata/1, wrap_fun/1, sandbox_fun/1, get_table_keys/2, get_table_keys_dec/2, get_table_key/3,
          get_private/2, set_table_keys/3, load/2, load_file/2, eval/2, eval_dec/2, eval_file/2,
          eval_file_dec/2, eval_chunk/2, eval_chunk_dec/2, call_function/3, call_function_dec/3,
          alloc/2]).
@@ -33,28 +33,27 @@ to_gleam(Value) ->
     end.
 
 classify(nil) ->
-    null;
+    "Nil";
 classify(Bool) when is_boolean(Bool) ->
-    bool;
+    "Bool";
 is_encoded(Binary) when is_binary(Binary) ->
-    string;
-classify(N) when is_number(N) ->
-    number;
+    "String";
+classify(N) when is_float(N) ->
+    "Number";
 classify({tref,_}) ->
-    table;
+    "Table";
 classify({usrdef,_}) ->
-    user_def;
+    "UserDef";
 classify({eref,_}) ->
-    unknown;
+    "Unknown";
 classify({funref,_,_}) ->
-    function;
+    "Function";
 classify({erl_func,_}) ->
-    function;
+    "Function";
 classify({erl_mfa,_,_,_}) ->
-    function;
+    "Function";
 classify(_) ->
-    unknown.
-
+    "Unknown".
 
 %% helper to determine if a value is encoded or not
 %% borrowed from https://github.com/tv-labs/lua/blob/5bf2069c2bd0b8f19ae8f3ea1e6947a44c3754d8/lib/lua/util.ex#L19-L35
@@ -158,6 +157,17 @@ wrap_fun(Fun) ->
 
 sandbox_fun(Msg) ->
     fun(_, State) -> {error, map_error(lua_error({error_call, [Msg]}, State))} end.
+
+
+get_table_key(Lua, Table, Key) ->
+    case luerl:get_table_keys(Table, Keys, Lua) of
+        {ok, nil, _} ->
+            {error, nil};
+        {ok, Value, Lua} ->
+            {ok, {Lua, Value}};
+        Other ->
+            to_gleam(Other)
+    end.
 
 get_table_keys(Lua, Keys) ->
     case luerl:get_table_keys(Keys, Lua) of
