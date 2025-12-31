@@ -202,11 +202,17 @@ pub fn optionally_at(
   // })
 }
 
-fn run_dynamic_function(lua: Lua, data: ValueRef, name: String) -> Return(t) {
-  case decode(data, lua) {
-    Ok(data) -> #(data, lua, [])
-    Error(zero) -> #(zero, lua, [
-      DeserializeError(name, classify(data), []),
+fn run_dynamic_function(
+  lua: Lua,
+  data: ValueRef,
+  expected: String,
+  zero: t,
+) -> Return(t) {
+  let got = classify(data)
+  case got == expected {
+    True -> #(decode(data, lua), lua, [])
+    False -> #(zero, lua, [
+      DeserializeError(expected, got, []),
     ])
   }
 }
@@ -217,25 +223,25 @@ fn decode(a: ValueRef, lua: Lua) -> a
 
 pub const string: Deserializer(String) = Deserializer(deser_string)
 
-fn deser_string(lua, data: ValueRef) -> #(String, Lua, List(DeserializeError)) {
-  run_dynamic_function(lua, data, "String")
+fn deser_string(lua, data: ValueRef) -> Return(String) {
+  run_dynamic_function(lua, data, "String", "")
 }
 
 pub const bool: Deserializer(Bool) = Deserializer(deser_bool)
 
-fn deser_bool(lua, data: ValueRef) -> #(Bool, Lua, List(DeserializeError)) {
-  run_dynamic_function(lua, data, "Bool")
+fn deser_bool(lua, data: ValueRef) -> Return(Bool) {
+  run_dynamic_function(lua, data, "Bool", True)
 }
 
 pub const number: Deserializer(Float) = Deserializer(deser_num)
 
-fn deser_num(lua, data: ValueRef) -> #(Float, Lua, List(DeserializeError)) {
-  run_dynamic_function(lua, data, "Float")
+fn deser_num(lua, data: ValueRef) -> Return(Float) {
+  run_dynamic_function(lua, data, "Number", 0.0)
 }
 
 pub const raw: Deserializer(ValueRef) = Deserializer(decode_raw)
 
-fn decode_raw(lua, data: ValueRef) -> #(ValueRef, Lua, List(DeserializeError)) {
+fn decode_raw(lua, data: ValueRef) -> Return(ValueRef) {
   #(data, lua, [])
 }
 
@@ -243,11 +249,8 @@ pub const user_defined: Deserializer(dynamic.Dynamic) = Deserializer(
   deser_user_defined,
 )
 
-fn deser_user_defined(
-  lua,
-  data: ValueRef,
-) -> #(dynamic.Dynamic, Lua, List(DeserializeError)) {
-  run_dynamic_function(lua, data, "UserDef")
+fn deser_user_defined(lua, data: ValueRef) -> Return(dynamic.Dynamic) {
+  run_dynamic_function(lua, data, "UserDef", dynamic.nil())
 }
 
 pub fn list(of inner: Deserializer(a)) -> Deserializer(List(a)) {

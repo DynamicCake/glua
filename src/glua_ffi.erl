@@ -5,7 +5,7 @@
 -export([coerce/1, coerce_nil/0, coerce_userdata/1, wrap_fun/1, sandbox_fun/1, get_table_keys/2, get_table_keys_dec/2, get_table_key/3,
          get_private/2, set_table_keys/3, load/2, load_file/2, eval/2, eval_dec/2, eval_file/2,
          eval_file_dec/2, eval_chunk/2, eval_chunk_dec/2, call_function/3, call_function_dec/3,
-         alloc/2]).
+         alloc/2, classify/1, ref_call_function/3]).
 
 %% turn `{userdata, Data}` into `Data` to make it more easy to decode it in Gleam
 maybe_process_userdata(Lst) when is_list(Lst) ->
@@ -33,27 +33,27 @@ to_gleam(Value) ->
     end.
 
 classify(nil) ->
-    "Nil";
+    <<"Nil">>;
 classify(Bool) when is_boolean(Bool) ->
-    "Bool";
-is_encoded(Binary) when is_binary(Binary) ->
-    "String";
+    <<"Bool">>;
+classify(Binary) when is_binary(Binary) ->
+    <<"String">>;
 classify(N) when is_float(N) ->
-    "Number";
+    <<"Number">>;
 classify({tref,_}) ->
-    "Table";
-classify({usrdef,_}) ->
-    "UserDef";
+    <<"Table">>;
+classify({usdref,_}) ->
+    <<"UserDef">>;
 classify({eref,_}) ->
-    "Unknown";
+    <<"Unknown">>;
 classify({funref,_,_}) ->
-    "Function";
+    <<"Function">>;
 classify({erl_func,_}) ->
-    "Function";
+    <<"Function">>;
 classify({erl_mfa,_,_,_}) ->
-    "Function";
+    <<"Function">>;
 classify(_) ->
-    "Unknown".
+    <<"Unknown">>.
 
 %% helper to determine if a value is encoded or not
 %% borrowed from https://github.com/tv-labs/lua/blob/5bf2069c2bd0b8f19ae8f3ea1e6947a44c3754d8/lib/lua/util.ex#L19-L35
@@ -160,7 +160,7 @@ sandbox_fun(Msg) ->
 
 
 get_table_key(Lua, Table, Key) ->
-    case luerl:get_table_keys(Table, Keys, Lua) of
+    case luerl:get_table_keys(Table, Key, Lua) of
         {ok, nil, _} ->
             {error, nil};
         {ok, Value, Lua} ->
