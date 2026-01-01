@@ -5,6 +5,8 @@
 
 import gleam/dict.{type Dict}
 import gleam/dynamic
+import gleam/dynamic/decode
+import gleam/int
 import gleam/list
 import gleam/option.{type Option, None, Some}
 import gleam/pair
@@ -38,7 +40,7 @@ pub fn subfield(
 ) -> Deserializer(final) {
   Deserializer(function: fn(lua, data) {
     let #(out, lua, errors1) =
-      index(
+      index_into(
         lua,
         field_path,
         [],
@@ -55,7 +57,7 @@ pub fn subfield(
   })
 }
 
-fn index(
+fn index_into(
   lua: Lua,
   path: List(ValueRef),
   position: List(ValueRef),
@@ -73,7 +75,7 @@ fn index(
     [key, ..path] -> {
       case get_table_key(lua, data, key) {
         Ok(#(lua, data)) -> {
-          index(lua, path, [key, ..position], inner, data, handle_miss)
+          index_into(lua, path, [key, ..position], inner, data, handle_miss)
         }
         // NOTE: I don't feel comfortable matching on this
         Error(glua.KeyNotFound)
@@ -107,7 +109,7 @@ pub fn run(
 
 pub fn at(path: List(ValueRef), inner: Deserializer(a)) -> Deserializer(a) {
   Deserializer(function: fn(lua, data) {
-    index(lua, path, [], inner.function, data, fn(lua, data, position) {
+    index_into(lua, path, [], inner.function, data, fn(lua, data, position) {
       let #(default, lua, _) = inner.function(lua, data)
       #(default, lua, [DeserializeError("Field", "Nothing", [])])
       |> push_path(list.reverse(position))
@@ -125,7 +127,8 @@ fn get_table_key(
 fn to_string(lua: Lua, val: ValueRef) {
   case classify(val) {
     "Null" -> "<nil>"
-    "Number" -> decode(val, lua)
+    "Int" -> decode(val, lua)
+    "Float" -> decode(val, lua)
     "String" -> decode(val, lua)
     "Unknown" -> "<unknown>"
     "UserDef" -> "userdefined: " <> string.inspect(val)
@@ -205,7 +208,7 @@ pub fn optionally_at(
   inner: Deserializer(a),
 ) -> Deserializer(a) {
   Deserializer(function: fn(lua, data) {
-    index(lua, path, [], inner.function, data, fn(_, _, _) {
+    index_into(lua, path, [], inner.function, data, fn(_, _, _) {
       #(default, lua, [])
     })
   })
@@ -245,7 +248,23 @@ fn deser_bool(lua, data: ValueRef) -> Return(Bool) {
 pub const number: Deserializer(Float) = Deserializer(deser_num)
 
 fn deser_num(lua, data: ValueRef) -> Return(Float) {
-  run_dynamic_function(lua, data, "Number", 0.0)
+  let got = classify(data)
+  case got {
+    "Float" -> #(decode(data, lua), lua, [])
+    "Int" -> {
+      let int: Int = decode(data, lua)
+      #(int.to_float(int), lua, [])
+    }
+    _ -> #(0.0, lua, [
+      DeserializeError("Number", got, []),
+    ])
+  }
+}
+
+pub const index: Deserializer(Int) = Deserializer(deser_index)
+
+fn deser_index(lua, data: ValueRef) -> Return(Int) {
+  run_dynamic_function(lua, data, "Int", 0)
 }
 
 pub const raw: Deserializer(ValueRef) = Deserializer(decode_raw)
@@ -277,32 +296,69 @@ fn deser_user_defined(lua, data: ValueRef) -> Return(dynamic.Dynamic) {
 }
 
 pub fn list(of inner: Deserializer(a)) -> Deserializer(List(a)) {
-  todo
-  // Deserializer(fn(data) {
-  //   decode_list(data, inner.function, fn(p, k) { push_path(p, [k]) }, 0, [])
-  // })
+  Deserializer(fn(lua, data) { todo })
+}
+
+pub fn list_strict(of inner: Deserializer(a)) -> Deserializer(List(a)) {
+  Deserializer(fn(lua, data) { todo })
 }
 
 pub fn dict(
   key: Deserializer(key),
   value: Deserializer(value),
 ) -> Deserializer(Dict(key, value)) {
-  todo
-  // Deserializer(fn(data) {
-  //   case decode_dict(data) {
-  //     Error(_) -> #(dict.new(), decode_error("Dict", data))
-  //     Ok(dict) ->
-  //       dict.fold(dict, #(dict.new(), []), fn(a, k, v) {
-  //         // If there are any errors from previous key-value pairs then we
-  //         // don't need to run the decoders, instead return the existing acc.
-  //         case a.1 {
-  //           [] -> fold_dict(a, k, v, key.function, value.function)
-  //           [_, ..] -> a
-  //         }
-  //       })
-  //   }
-  // })
+  Deserializer(fn(lua, data) {
+    let class = classify(data)
+    case class {
+      "Table" -> {
+        let pairs = get_table_pairs(lua, data)
+        list.fold(pairs, #(dict.new(), lua, []), fn(a, pair) {
+          let #(k, v) = pair
+          // If there are any errors from previous key-value pairs then we
+          // don't need to run the decoders, instead return the existing acc.
+          case a.2 {
+            [] -> fold_dict(lua, a, k, v, key.function, value.function)
+            [_, ..] -> a
+          }
+        })
+      }
+      _ -> #(dict.new(), lua, [DeserializeError("Table", class, [])])
+    }
+  })
 }
+
+fn fold_dict(
+  lua: Lua,
+  acc: #(Dict(k, v), Lua, List(DeserializeError)),
+  key: ValueRef,
+  value: ValueRef,
+  key_decoder: fn(Lua, ValueRef) -> Return(k),
+  value_decoder: fn(Lua, ValueRef) -> Return(v),
+) -> Return(Dict(k, v)) {
+  // First we decode the key.
+  case key_decoder(lua, key) {
+    #(key, lua, []) ->
+      // Then we decode the value.
+      case value_decoder(lua, value) {
+        #(value, lua, []) -> {
+          // It worked! Insert the new key-value pair so we can move onto the next.
+          let dict = dict.insert(acc.0, key, value)
+          #(dict, acc.1, acc.2)
+        }
+        #(_, lua, errors) ->
+          push_path(#(dict.new(), lua, errors), [glua.string("values")])
+      }
+    #(_, lua, errors) ->
+      push_path(#(dict.new(), lua, errors), [glua.string("keys")])
+  }
+}
+
+/// Preconditions: `table` is a lua table
+@external(erlang, "glua_ffi", "get_table_pairs")
+pub fn get_table_pairs(
+  state: glua.Lua,
+  table: ValueRef,
+) -> List(#(ValueRef, ValueRef))
 
 pub fn optional(inner: Deserializer(a)) -> Deserializer(Option(a)) {
   Deserializer(function: fn(lua, data) {

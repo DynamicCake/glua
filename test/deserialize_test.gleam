@@ -1,7 +1,10 @@
 import deser
+import gleam/dict
 import gleam/dynamic
+import gleam/int
 import gleam/list
-import glua
+import gleam/pair
+import glua.{type ValueRef}
 
 @external(erlang, "glua_ffi", "coerce")
 fn coerce_dynamic(a: anything) -> dynamic.Dynamic
@@ -207,4 +210,36 @@ pub fn optional_field_ok_test() {
     })
 
   assert miss == "doh i missed"
+}
+
+pub fn table_decode_test() {
+  let lua = glua.new()
+  let points = [#("Mark", 39.0), #("Mason", 66.0), #("Mabel", 42.0)]
+  let #(lua, data) =
+    glua.table(
+      lua,
+      points
+        |> list.map(fn(pair) { #(glua.string(pair.0), glua.float(pair.1)) }),
+    )
+  let assert Ok(#(_lua, dict)) =
+    deser.run(lua, data, deser.dict(deser.string, deser.number))
+  assert dict == dict.from_list(points)
+}
+
+pub fn table_list_decode_test() {
+  let lua = glua.new()
+  let meanings = [
+    #(42, "the universe"),
+    #(39, "HATSUNE MIKU"),
+    #(4, "death"),
+  ]
+  let #(lua, data) =
+    glua.table(
+      lua,
+      meanings
+        |> list.map(fn(pair) { #(glua.int(pair.0), glua.string(pair.1)) }),
+    )
+  let assert Ok(#(_lua, dict)) =
+    deser.run(lua, data, deser.dict(deser.index, deser.string))
+  assert dict == dict.from_list(meanings)
 }

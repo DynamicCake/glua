@@ -1,10 +1,12 @@
 -module(glua_ffi).
 
 -import(luerl_lib, [lua_error/2]).
+-include_lib("luerl/include/luerl.hrl").
 
 -export([coerce/1, coerce_nil/0, coerce_userdata/1, wrap_fun/2, sandbox_fun/1, get_table_keys/2, get_table_keys_dec/2, get_table_key/3,
          get_private/2, set_table_keys/3, load/2, load_file/2, eval/2, eval_dec/2, eval_file/2, encode_table/2, encode_userdata/2,
-         eval_file_dec/2, eval_chunk/2, eval_chunk_dec/2, call_function/3, call_function_dec/3, classify/1, unwrap_userdata/1]).
+         eval_file_dec/2, eval_chunk/2, eval_chunk_dec/2, call_function/3, call_function_dec/3, classify/1, unwrap_userdata/1,
+        get_table_pairs/2]).
 
 %% turn `{userdata, Data}` into `Data` to make it more easy to decode it in Gleam
 maybe_process_userdata(Lst) when is_list(Lst) ->
@@ -53,6 +55,12 @@ classify({erl_mfa,_,_,_}) ->
     <<"Function">>;
 classify(_) ->
     <<"Unknown">>.
+
+get_table_pairs(St, #tref{}=T) ->
+    #table{a=Arr, d=Dict} = luerl_heap:get_table(T, St),
+    Fun = fun (K, V, Acc) -> [{K, V} | Acc] end,
+    Ts = ttdict:fold(Fun, [], Dict),
+    array:sparse_foldr(Fun, Ts, Arr).
 
 %% helper to determine if a value is encoded or not
 %% borrowed from https://github.com/tv-labs/lua/blob/5bf2069c2bd0b8f19ae8f3ea1e6947a44c3754d8/lib/lua/util.ex#L19-L35
