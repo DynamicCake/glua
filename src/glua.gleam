@@ -71,7 +71,7 @@ pub fn float(v: Float) -> ValueRef
 pub fn table(lua: Lua, values: List(#(ValueRef, ValueRef))) -> #(Lua, ValueRef)
 
 pub fn table_list(lua: Lua, values: List(ValueRef)) -> #(Lua, ValueRef) {
-  list.map_fold(values, 1, fn(acc, ref) { #(acc, #(int(acc), ref)) })
+  list.map_fold(values, 1, fn(acc, ref) { #(acc + 1, #(int(acc), ref)) })
   |> pair.second()
   |> table(lua, _)
 }

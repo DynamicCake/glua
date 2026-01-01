@@ -1,10 +1,8 @@
 import deser
 import gleam/dict
 import gleam/dynamic
-import gleam/int
 import gleam/list
-import gleam/pair
-import glua.{type ValueRef}
+import glua
 
 @external(erlang, "glua_ffi", "coerce")
 fn coerce_dynamic(a: anything) -> dynamic.Dynamic
@@ -242,4 +240,58 @@ pub fn table_list_decode_test() {
   let assert Ok(#(_lua, dict)) =
     deser.run(lua, data, deser.dict(deser.index, deser.string))
   assert dict == dict.from_list(meanings)
+}
+
+pub fn table_list_ok_test() {
+  let lua = glua.new()
+  let greetings = [
+    "Hi there",
+    "Hello there",
+    "Hey!",
+    "Hi everyone",
+    "Hello all",
+    "Good morning everyone",
+  ]
+  let #(lua, data) =
+    glua.table_list(
+      lua,
+      greetings
+        |> list.map(glua.string),
+    )
+  let assert Ok(#(lua, list)) = deser.run(lua, data, deser.list(deser.string))
+  assert list == greetings
+
+  let #(lua, data) = glua.table(lua, [])
+  let assert Ok(#(_lua, [])) = deser.run(lua, data, deser.list(deser.string))
+}
+
+pub fn table_list_err_test() {
+  let lua = glua.new()
+  let tf = fn(pair: #(Int, String)) { #(glua.int(pair.0), glua.string(pair.1)) }
+  let not_table_list = Error([deser.DeserializeError("TableList", "Table", [])])
+
+  // Missing start
+  let #(lua, data) =
+    glua.table(lua, [#(2, "a"), #(3, "b"), #(4, "c")] |> list.map(tf))
+  assert deser.run(lua, data, deser.list(deser.string)) == not_table_list
+
+  // Early start
+  let #(lua, data) =
+    glua.table(lua, [#(0, "a"), #(1, "b"), #(2, "c")] |> list.map(tf))
+  assert deser.run(lua, data, deser.list(deser.string)) == not_table_list
+
+  // Gap
+  let #(lua, data) =
+    glua.table(lua, [#(1, "a"), #(2, "b"), #(4, "c")] |> list.map(tf))
+  assert deser.run(lua, data, deser.list(deser.string)) == not_table_list
+
+  // non number key
+  let #(lua, data) =
+    glua.table(
+      lua,
+      [#(1, "a"), #(2, "b"), #(3, "c")]
+        |> list.map(tf)
+        |> list.prepend(#(glua.string("wrench"), glua.string("in this table"))),
+    )
+  assert deser.run(lua, data, deser.list(deser.string)) == not_table_list
 }

@@ -11,8 +11,7 @@ import gleeunit
 // import glua
 
 pub fn main() -> Nil {
-  // gleeunit.main()
-  deserialize_test.deserializer_test()
+  gleeunit.main()
 }
 // pub fn get_table_test() {
 //   let lua = glua.new()

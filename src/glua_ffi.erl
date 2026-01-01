@@ -6,7 +6,7 @@
 -export([coerce/1, coerce_nil/0, coerce_userdata/1, wrap_fun/2, sandbox_fun/1, get_table_keys/2, get_table_keys_dec/2, get_table_key/3,
          get_private/2, set_table_keys/3, load/2, load_file/2, eval/2, eval_dec/2, eval_file/2, encode_table/2, encode_userdata/2,
          eval_file_dec/2, eval_chunk/2, eval_chunk_dec/2, call_function/3, call_function_dec/3, classify/1, unwrap_userdata/1,
-        get_table_pairs/2, get_table_transform/4]).
+         get_table_transform/4, get_table_list_transform/4]).
 
 %% turn `{userdata, Data}` into `Data` to make it more easy to decode it in Gleam
 maybe_process_userdata(Lst) when is_list(Lst) ->
@@ -63,6 +63,35 @@ get_table_transform(St, #tref{}=T, Acc, Func)
     #table{a=Arr, d=Dict} = luerl_heap:get_table(T, St),
     Acc1 = ttdict:fold(Func, Acc, Dict),
     array:sparse_foldl(Func, Acc1, Arr).
+
+get_table_list_transform(St, #tref{}=T, Acc, Func)
+    when is_function(Func, 2) ->
+    #table{a=Arr, d=Dict} = luerl_heap:get_table(T, St),
+    case Dict of
+        empty -> do_list_transform(Arr, Acc, Func);
+        _ -> {error, nil}
+    end.
+
+do_list_transform(Arr, Acc, Func) ->
+    N = array:size(Arr),
+    try
+        Wrapped = fun(Idx, Val, {Expected, UserAcc}) ->
+                 case Idx of
+                     Expected ->
+                         {Expected - 1, Func(Val, UserAcc)};
+                     _        -> throw(hole)
+                 end
+              end,
+        {End, Final} =
+            array:sparse_foldr(Wrapped, {N - 1, Acc}, Arr),
+        case {N, End} of
+            {0, _} -> {ok, Final};
+            {_, 0} -> {ok, Final};
+            _ -> {error, nil}
+        end
+    catch
+        throw:hole -> {error, nil}
+    end.
 
 
 %% helper to determine if a value is encoded or not

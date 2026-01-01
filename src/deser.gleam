@@ -295,13 +295,48 @@ fn deser_user_defined(lua, data: ValueRef) -> Return(dynamic.Dynamic) {
   }
 }
 
+/// Strictly decodes a list
+/// 1. first element must start with 1
+/// 2. no gaps
+/// 3. no non number keys
 pub fn list(of inner: Deserializer(a)) -> Deserializer(List(a)) {
-  Deserializer(fn(lua, data) { todo })
+  Deserializer(fn(lua, data) {
+    let class = classify(data)
+    let not_table_list = #([], lua, [DeserializeError("TableList", class, [])])
+    case class {
+      "Table" -> {
+        let res =
+          get_table_list_transform(lua, data, #([], lua, []), fn(it, acc) {
+            case acc.2 {
+              [] -> {
+                case inner.function(lua, it) {
+                  #(value, lua, []) -> {
+                    #(list.prepend(acc.0, value), lua, acc.2)
+                  }
+                  #(_, lua, errors) ->
+                    push_path(#([], lua, errors), [glua.string("items")])
+                }
+              }
+              [_, ..] -> acc
+            }
+          })
+        case res {
+          Ok(it) -> it
+          Error(Nil) -> not_table_list
+        }
+      }
+      _ -> not_table_list
+    }
+  })
 }
 
-pub fn list_strict(of inner: Deserializer(a)) -> Deserializer(List(a)) {
-  Deserializer(fn(lua, data) { todo })
-}
+@external(erlang, "glua_ffi", "get_table_list_transform")
+fn get_table_list_transform(
+  lua: Lua,
+  table: ValueRef,
+  accumulator: acc,
+  func: fn(ValueRef, acc) -> acc,
+) -> Result(acc, Nil)
 
 pub fn dict(
   key: Deserializer(key),
