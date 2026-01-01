@@ -325,6 +325,7 @@ pub fn dict(
   })
 }
 
+/// Preconditions: `table` is a lua table
 @external(erlang, "glua_ffi", "get_table_transform")
 fn get_table_transform(
   lua: Lua,
@@ -359,13 +360,6 @@ fn fold_dict(
   }
 }
 
-/// Preconditions: `table` is a lua table
-@external(erlang, "glua_ffi", "get_table_pairs")
-pub fn get_table_pairs(
-  state: glua.Lua,
-  table: ValueRef,
-) -> List(#(ValueRef, ValueRef))
-
 pub fn optional(inner: Deserializer(a)) -> Deserializer(Option(a)) {
   Deserializer(function: fn(lua, data) {
     case classify(data) {
@@ -379,11 +373,10 @@ pub fn optional(inner: Deserializer(a)) -> Deserializer(Option(a)) {
 }
 
 pub fn map(decoder: Deserializer(a), transformer: fn(a) -> b) -> Deserializer(b) {
-  todo
-  // Deserializer(function: fn(d) {
-  //   let #(data, errors) = decoder.function(d)
-  //   #(transformer(data), errors)
-  // })
+  Deserializer(function: fn(lua, d) {
+    let #(data, lua, errors) = decoder.function(lua, d)
+    #(transformer(data), lua, errors)
+  })
 }
 
 pub fn map_errors(

@@ -58,12 +58,6 @@ classify({erl_mfa,_,_,_}) ->
 classify(_) ->
     <<"Unknown">>.
 
-get_table_pairs(St, #tref{}=T) ->
-    #table{a=Arr, d=Dict} = luerl_heap:get_table(T, St),
-    Fun = fun (K, V, Acc) -> [{K, V} | Acc] end,
-    Ts = ttdict:fold(Fun, [], Dict),
-    array:sparse_foldr(Fun, Ts, Arr).
-
 get_table_transform(St, #tref{}=T, Acc, Func)
   when is_function(Func, 3) ->
     #table{a=Arr, d=Dict} = luerl_heap:get_table(T, St),
