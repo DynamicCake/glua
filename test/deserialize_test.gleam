@@ -295,3 +295,17 @@ pub fn table_list_err_test() {
     )
   assert deser.run(lua, data, deser.list(deser.string)) == not_table_list
 }
+
+pub fn then_test() {
+  let positive_deser = {
+    use lua, num <- deser.then(deser.number)
+    case num >. 0.0 {
+      False -> deser.failure(0.0, "PositiveNum")
+      True -> deser.success(num)
+    }
+  }
+  let lua = glua.new()
+  let assert Ok(#(lua, 4.0)) = deser.run(lua, glua.int(4), positive_deser)
+  let assert Error([deser.DeserializeError("PositiveNum", "Float", [])]) =
+    deser.run(lua, glua.int(-4), positive_deser)
+}

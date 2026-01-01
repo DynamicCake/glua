@@ -441,18 +441,17 @@ pub fn collapse_errors(
 
 pub fn then(
   decoder: Deserializer(a),
-  next: fn(a) -> Deserializer(b),
+  next: fn(Lua, a) -> Deserializer(b),
 ) -> Deserializer(b) {
-  todo
-  // Deserializer(function: fn(dynamic_data) {
-  //   let #(data, errors) = decoder.function(dynamic_data)
-  //   let decoder = next(data)
-  //   let #(data, _) as layer = decoder.function(dynamic_data)
-  //   case errors {
-  //     [] -> layer
-  //     [_, ..] -> #(data, errors)
-  //   }
-  // })
+  Deserializer(function: fn(lua, dynamic_data) {
+    let #(data, lua, errors) = decoder.function(lua, dynamic_data)
+    let decoder = next(lua, data)
+    let #(data, lua, _) as layer = decoder.function(lua, dynamic_data)
+    case errors {
+      [] -> layer
+      [_, ..] -> #(data, lua, errors)
+    }
+  })
 }
 
 pub fn one_of(
@@ -489,8 +488,7 @@ fn run_decoders(
 }
 
 pub fn failure(zero: a, expected: String) -> Deserializer(a) {
-  todo
-  // Deserializer(function: fn(d) { #(zero, glua.new(), deser_error(expected, d)) })
+  Deserializer(function: fn(lua, d) { #(zero, lua, deser_error(expected, d)) })
 }
 
 pub fn recursive(inner: fn() -> Deserializer(a)) -> Deserializer(a) {
