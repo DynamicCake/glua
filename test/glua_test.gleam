@@ -5,12 +5,14 @@
 // import gleam/list
 // import gleam/option
 // import gleam/pair
+import deserialize_test
 import gleeunit
 
 // import glua
 
 pub fn main() -> Nil {
-  gleeunit.main()
+  // gleeunit.main()
+  deserialize_test.deserializer_test()
 }
 // pub fn get_table_test() {
 //   let lua = glua.new()

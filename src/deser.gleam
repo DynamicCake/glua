@@ -311,9 +311,7 @@ pub fn dict(
     let class = classify(data)
     case class {
       "Table" -> {
-        let pairs = get_table_pairs(lua, data)
-        list.fold(pairs, #(dict.new(), lua, []), fn(a, pair) {
-          let #(k, v) = pair
+        get_table_transform(lua, data, #(dict.new(), lua, []), fn(k, v, a) {
           // If there are any errors from previous key-value pairs then we
           // don't need to run the decoders, instead return the existing acc.
           case a.2 {
@@ -326,6 +324,14 @@ pub fn dict(
     }
   })
 }
+
+@external(erlang, "glua_ffi", "get_table_transform")
+fn get_table_transform(
+  lua: Lua,
+  table: ValueRef,
+  accumulator: acc,
+  func: fn(ValueRef, ValueRef, acc) -> acc,
+) -> acc
 
 fn fold_dict(
   lua: Lua,
@@ -343,7 +349,7 @@ fn fold_dict(
         #(value, lua, []) -> {
           // It worked! Insert the new key-value pair so we can move onto the next.
           let dict = dict.insert(acc.0, key, value)
-          #(dict, acc.1, acc.2)
+          #(dict, lua, acc.2)
         }
         #(_, lua, errors) ->
           push_path(#(dict.new(), lua, errors), [glua.string("values")])
