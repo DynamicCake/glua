@@ -5,6 +5,7 @@
 
 import gleam/dict.{type Dict}
 import gleam/dynamic
+import gleam/float
 import gleam/int
 import gleam/list
 import gleam/option.{type Option}
@@ -234,10 +235,27 @@ fn deser_num(lua, data: ValueRef) -> Return(Float) {
   }
 }
 
-pub const index: Deserializer(Int) = Deserializer(deser_index)
+pub const int: Deserializer(Int) = Deserializer(deser_int)
 
-fn deser_index(lua, data: ValueRef) -> Return(Int) {
-  run_dynamic_function(lua, data, "Int", 0)
+fn deser_int(lua, data: ValueRef) -> Return(Int) {
+  let got = classify(data)
+  let error = #(0, lua, [
+    DeserializeError("Int", got, []),
+  ])
+  case got {
+    "Float" -> {
+      let float: Float = decode(data, lua)
+      let int = float.truncate(float)
+      case int.to_float(int) == float {
+        True -> #(int, lua, [])
+        False -> error
+      }
+    }
+    "Int" -> {
+      #(decode(data, lua), lua, [])
+    }
+    _ -> error
+  }
 }
 
 pub const raw: Deserializer(ValueRef) = Deserializer(decode_raw)
@@ -246,7 +264,7 @@ fn decode_raw(lua, data: ValueRef) -> Return(ValueRef) {
   #(data, lua, [])
 }
 
-pub const user_defined: Deserializer(dynamic.Dynamic) = Deserializer(
+pub const userdata: Deserializer(dynamic.Dynamic) = Deserializer(
   deser_user_defined,
 )
 

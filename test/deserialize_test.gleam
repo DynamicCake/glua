@@ -18,7 +18,7 @@ pub fn deserializer_test() {
 
   let data = ["this", "is", "some", "random", "data"]
   let #(lua, ref) = data |> glua.userdata(lua, _)
-  let assert Ok(#(_lua, userdefined)) = deser.run(lua, ref, deser.user_defined)
+  let assert Ok(#(_lua, userdefined)) = deser.run(lua, ref, deser.userdata)
   assert userdefined == coerce_dynamic(data)
 }
 
@@ -238,7 +238,7 @@ pub fn table_list_decode_test() {
         |> list.map(fn(pair) { #(glua.int(pair.0), glua.string(pair.1)) }),
     )
   let assert Ok(#(_lua, dict)) =
-    deser.run(lua, data, deser.dict(deser.index, deser.string))
+    deser.run(lua, data, deser.dict(deser.int, deser.string))
   assert dict == dict.from_list(meanings)
 }
 
