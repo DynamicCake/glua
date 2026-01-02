@@ -295,6 +295,21 @@ fn deser_user_defined(lua, data: ValueRef) -> Return(dynamic.Dynamic) {
   }
 }
 
+pub const function: Deserializer(glua.Function) = Deserializer(deser_function)
+
+fn deser_function(lua: Lua, data: ValueRef) -> Return(glua.Function) {
+  let got = classify(data)
+  case got == "Function" {
+    True -> #(coerce_funciton(data), lua, [])
+    False -> #(coerce_funciton(Nil), lua, [
+      DeserializeError("Function", got, []),
+    ])
+  }
+}
+
+@external(erlang, "glua_ffi", "coerce")
+fn coerce_funciton(func: anything) -> glua.Function
+
 /// Strictly decodes a list
 /// 1. first element must start with 1
 /// 2. no gaps

@@ -51,6 +51,9 @@ pub type Chunk
 /// that will return references to the values instead of decoding them.
 pub type ValueRef
 
+/// A `ValueRef` that is a function
+pub type Function
+
 @external(erlang, "glua_ffi", "coerce_nil")
 pub fn nil() -> ValueRef
 
@@ -410,13 +413,13 @@ fn do_eval_file(
 @external(erlang, "glua_ffi", "call_function")
 fn do_call_function(
   lua: Lua,
-  fun: ValueRef,
+  fun: Function,
   args: List(ValueRef),
 ) -> Result(#(Lua, List(ValueRef)), LuaError)
 
 pub fn call_function(
   state lua: Lua,
-  ref fun: ValueRef,
+  ref fun: Function,
   args args: List(ValueRef),
 ) -> Result(#(Lua, List(ValueRef)), LuaError) {
   do_call_function(lua, fun, args)
@@ -429,5 +432,8 @@ pub fn call_function_by_name(
   args args: List(ValueRef),
 ) -> Result(#(Lua, List(ValueRef)), LuaError) {
   use fun <- result.try(get(lua, keys))
-  call_function(lua, fun, args)
+  call_function(lua, coerce_funciton(fun), args)
 }
+
+@external(erlang, "glua_ffi", "coerce")
+fn coerce_funciton(func: ValueRef) -> Function

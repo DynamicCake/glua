@@ -1,4 +1,4 @@
-import deser
+import deser.{DeserializeError}
 import gleam/dict
 import gleam/dynamic
 import gleam/list
@@ -41,7 +41,7 @@ pub fn field_err_test() {
   let lua = glua.new()
   let #(lua, data) =
     glua.table(lua, [#(glua.string("red herring"), glua.string("nope"))])
-  let assert Error([deser.DeserializeError("Field", "Nothing", path)]) =
+  let assert Error([DeserializeError("Field", "Nothing", path)]) =
     deser.run(lua, data, {
       use str <- deser.field(glua.string("name"), deser.string)
       deser.success(str)
@@ -84,7 +84,7 @@ pub fn subfield_err_test() {
       #(glua.string("name"), glua.string("Hina")),
       #(glua.string("friends"), inner),
     ])
-  let assert Error([deser.DeserializeError("Field", "Nothing", path)]) =
+  let assert Error([DeserializeError("Field", "Nothing", path)]) =
     deser.run(lua, data, {
       use first <- deser.subfield(
         [glua.string("friends"), glua.int(1)],
@@ -149,7 +149,7 @@ pub fn at_err_test() {
       ],
       deser.string,
     )
-  let assert Error([deser.DeserializeError("Field", "Nothing", path)]) =
+  let assert Error([DeserializeError("Field", "Nothing", path)]) =
     deser.run(lua, first, third)
   assert path == ["first", "third"] |> list.map(glua.string)
 }
@@ -268,7 +268,7 @@ pub fn table_list_ok_test() {
 pub fn table_list_err_test() {
   let lua = glua.new()
   let tf = fn(pair: #(Int, String)) { #(glua.int(pair.0), glua.string(pair.1)) }
-  let not_table_list = Error([deser.DeserializeError("TableList", "Table", [])])
+  let not_table_list = Error([DeserializeError("TableList", "Table", [])])
 
   // Missing start
   let #(lua, data) =
@@ -306,6 +306,28 @@ pub fn then_test() {
   }
   let lua = glua.new()
   let assert Ok(#(lua, 4.0)) = deser.run(lua, glua.int(4), positive_deser)
-  let assert Error([deser.DeserializeError("PositiveNum", "Float", [])]) =
+  let assert Error([DeserializeError("PositiveNum", "Float", [])]) =
     deser.run(lua, glua.int(-4), positive_deser)
+}
+
+pub fn custom_function_ok_test() {
+  let assert Ok(#(lua, [func])) =
+    glua.eval(glua.new(), "return function () return 42 end")
+  let assert Ok(#(lua, func)) = deser.run(lua, func, deser.function)
+  let assert Ok(#(lua, [num])) = glua.call_function(lua, func, [])
+  let assert Ok(#(_lua, 42.0)) = deser.run(lua, num, deser.number)
+}
+
+pub fn builtin_function_ok_test() {
+  let assert Ok(#(lua, [func])) = glua.eval(glua.new(), "return string.upper")
+  let assert Ok(#(lua, func)) = deser.run(lua, func, deser.function)
+  let assert Ok(#(lua, [str])) =
+    glua.call_function(lua, func, [glua.string("hello")])
+  let assert Ok(#(_lua, "HELLO")) = deser.run(lua, str, deser.string)
+}
+
+pub fn function_err_test() {
+  let assert Ok(#(lua, [func])) = glua.eval(glua.new(), "return string")
+  let assert Error([DeserializeError("Function", "Table", [])]) =
+    deser.run(lua, func, deser.function)
 }
