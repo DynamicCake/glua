@@ -298,7 +298,7 @@ pub fn table_list_err_test() {
 
 pub fn then_test() {
   let positive_deser = {
-    use lua, num <- deser.then(deser.number)
+    use _lua, num <- deser.then(deser.number)
     case num >. 0.0 {
       False -> deser.failure(0.0, "PositiveNum")
       True -> deser.success(num)

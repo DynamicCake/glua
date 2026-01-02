@@ -5,13 +5,9 @@
 
 import gleam/dict.{type Dict}
 import gleam/dynamic
-import gleam/dynamic/decode
 import gleam/int
 import gleam/list
-import gleam/option.{type Option, None, Some}
-import gleam/pair
-import gleam/result
-import gleam/string
+import gleam/option.{type Option}
 import glua.{type Lua, type ValueRef}
 
 pub opaque type Deserializer(t) {
@@ -85,7 +81,7 @@ fn index_into(
           )) -> {
           handle_miss(lua, data, [key, ..position])
         }
-        Error(err) -> {
+        Error(_err) -> {
           let #(default, lua, _) = inner(lua, data)
           #(default, lua, [DeserializeError("Table", classify(data), [])])
           |> push_path(list.reverse(position))
@@ -124,30 +120,6 @@ fn get_table_key(
   key: ValueRef,
 ) -> Result(#(Lua, ValueRef), glua.LuaError)
 
-fn to_string(lua: Lua, val: ValueRef) {
-  case classify(val) {
-    "Null" -> "<nil>"
-    "Int" -> decode(val, lua)
-    "Float" -> decode(val, lua)
-    "String" -> decode(val, lua)
-    "Unknown" -> "<unknown>"
-    "UserDef" -> "userdefined: " <> string.inspect(val)
-    _ -> {
-      {
-        case glua.call_function_by_name(lua, ["tostring"], [val]) {
-          Ok(#(lua, [value])) -> {
-            run(lua, value, string)
-            |> result.map(pair.second)
-            |> result.unwrap("<tostring failure>")
-          }
-          Error(err) -> "<tostring failure (" <> string.inspect(err) <> ")>"
-          _ -> "<tostring failure>"
-        }
-      }
-    }
-  }
-}
-
 fn push_path(layer: Return(t), path: List(ValueRef)) -> Return(t) {
   let errors =
     list.map(layer.2, fn(error) {
@@ -156,6 +128,7 @@ fn push_path(layer: Return(t), path: List(ValueRef)) -> Return(t) {
   #(layer.0, layer.1, errors)
 }
 
+// TOOD: Make it take lua
 pub fn success(data: t) -> Deserializer(t) {
   Deserializer(function: fn(lua, _) { #(data, lua, []) })
 }
