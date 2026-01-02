@@ -32,7 +32,7 @@ pub fn field_ok_test() {
   let assert Ok(#(_lua, val)) =
     deser.run(lua, data, {
       use str <- deser.field(glua.string("name"), deser.string)
-      deser.success(str)
+      deser.success(lua, str)
     })
   assert val == "Hina"
 }
@@ -44,7 +44,7 @@ pub fn field_err_test() {
   let assert Error([DeserializeError("Field", "Nothing", path)]) =
     deser.run(lua, data, {
       use str <- deser.field(glua.string("name"), deser.string)
-      deser.success(str)
+      deser.success(lua, str)
     })
   assert path == [glua.string("name")]
 }
@@ -67,7 +67,7 @@ pub fn subfield_ok_test() {
         [glua.string("friends"), glua.int(1)],
         deser.string,
       )
-      deser.success(first)
+      deser.success(lua, first)
     })
   assert val == "Puffy"
 }
@@ -90,7 +90,7 @@ pub fn subfield_err_test() {
         [glua.string("friends"), glua.int(1)],
         deser.string,
       )
-      deser.success(first)
+      deser.success(lua, first)
     })
   assert path == [glua.string("friends"), glua.int(1)]
 }
@@ -112,7 +112,7 @@ pub fn field_metatable_test() {
         glua.string("aasdlkjghasddlkjghasddklgjh;ksjdh"),
         deser.string,
       )
-      deser.success(pong)
+      deser.success(lua, pong)
     })
   assert val == "pong"
 }
@@ -194,7 +194,7 @@ pub fn optional_field_ok_test() {
         "doh i missed",
         deser.string,
       )
-      deser.success(hit)
+      deser.success(lua, hit)
     })
   assert hit == "hit"
   let assert Ok(#(_lua, miss)) =
@@ -204,7 +204,7 @@ pub fn optional_field_ok_test() {
         "doh i missed",
         deser.string,
       )
-      deser.success(hit)
+      deser.success(lua, hit)
     })
 
   assert miss == "doh i missed"
@@ -298,10 +298,10 @@ pub fn table_list_err_test() {
 
 pub fn then_test() {
   let positive_deser = {
-    use _lua, num <- deser.then(deser.number)
+    use lua, num <- deser.then(deser.number)
     case num >. 0.0 {
       False -> deser.failure(0.0, "PositiveNum")
-      True -> deser.success(num)
+      True -> deser.success(lua, num)
     }
   }
   let lua = glua.new()

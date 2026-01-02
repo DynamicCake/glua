@@ -33,7 +33,7 @@ pub fn deser_test() {
   let deserializer = {
     use name <- deser.field(glua.string("name"), deser.string)
     use language <- deser.field(glua.string("written_in"), deser.string)
-    deser.success(Project(name:, language:))
+    deser.success(lua, Project(name:, language:))
   }
 
   let assert Ok(#(_lua, project)) = deser.run(lua, table, deserializer)

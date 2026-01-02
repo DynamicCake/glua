@@ -129,8 +129,8 @@ fn push_path(layer: Return(t), path: List(ValueRef)) -> Return(t) {
 }
 
 // TOOD: Make it take lua
-pub fn success(data: t) -> Deserializer(t) {
-  Deserializer(function: fn(lua, _) { #(data, lua, []) })
+pub fn success(lua: Lua, data: t) -> Deserializer(t) {
+  Deserializer(function: fn(_, _) { #(data, lua, []) })
 }
 
 pub fn deser_error(
