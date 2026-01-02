@@ -120,7 +120,7 @@ let assert Ok(#(lua, result)) = deser.run(lua, result, deser.number)
 
 assert result == 20.0
 
-// `glua.call_function_by_name` is a shorthand for `glua.ref_get` followed by `glua.call_function`
+// `glua.call_function_by_name` is a shorthand for `glua.get` followed by `glua.call_function`
 let assert Ok(#(_lua, [result])) =
   glua.call_function_by_name(state: lua, keys: ["math", "max"], args:)
 
