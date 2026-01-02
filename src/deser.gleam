@@ -433,25 +433,23 @@ pub fn map_errors(
   decoder: Deserializer(a),
   transformer: fn(List(DeserializeError)) -> List(DeserializeError),
 ) -> Deserializer(a) {
-  todo
-  // Deserializer(function: fn(d) {
-  //   let #(data, errors) = decoder.function(d)
-  //   #(data, transformer(errors))
-  // })
+  Deserializer(function: fn(lua, d) {
+    let #(data, lua, errors) = decoder.function(lua, d)
+    #(data, lua, transformer(errors))
+  })
 }
 
 pub fn collapse_errors(
   decoder: Deserializer(a),
   name: String,
 ) -> Deserializer(a) {
-  todo
-  // Deserializer(function: fn(dynamic_data) {
-  //   let #(data, errors) as layer = decoder.function(dynamic_data)
-  //   case errors {
-  //     [] -> layer
-  //     [_, ..] -> #(data, decode_error(name, dynamic_data))
-  //   }
-  // })
+  Deserializer(function: fn(lua, dynamic_data) {
+    let #(data, lua, errors) as layer = decoder.function(lua, dynamic_data)
+    case errors {
+      [] -> layer
+      [_, ..] -> #(data, lua, deser_error(name, dynamic_data))
+    }
+  })
 }
 
 pub fn then(
@@ -473,33 +471,32 @@ pub fn one_of(
   first: Deserializer(a),
   or alternatives: List(Deserializer(a)),
 ) -> Deserializer(a) {
-  todo
-  // Deserializer(function: fn(dynamic_data) {
-  //   let #(_, errors) as layer = first.function(dynamic_data)
-  //   case errors {
-  //     [] -> layer
-  //     [_, ..] -> run_decoders(dynamic_data, layer, alternatives)
-  //   }
-  // })
+  Deserializer(function: fn(lua, dynamic_data) {
+    let #(_, lua, errors) as layer = first.function(lua, dynamic_data)
+    case errors {
+      [] -> layer
+      [_, ..] -> run_decoders(dynamic_data, lua, layer, alternatives)
+    }
+  })
 }
 
 fn run_decoders(
   data: ValueRef,
-  failure: #(a, List(DeserializeError)),
+  lua: Lua,
+  failure: Return(a),
   decoders: List(Deserializer(a)),
-) -> #(a, List(DeserializeError)) {
-  todo
-  // case decoders {
-  //   [] -> failure
-  //
-  //   [decoder, ..decoders] -> {
-  //     let #(_, errors) as layer = decoder.function(data)
-  //     case errors {
-  //       [] -> layer
-  //       [_, ..] -> run_decoders(data, failure, decoders)
-  //     }
-  //   }
-  // }
+) -> Return(a) {
+  case decoders {
+    [] -> failure
+
+    [decoder, ..decoders] -> {
+      let #(_, lua, errors) as layer = decoder.function(lua, data)
+      case errors {
+        [] -> layer
+        [_, ..] -> run_decoders(data, lua, failure, decoders)
+      }
+    }
+  }
 }
 
 pub fn failure(zero: a, expected: String) -> Deserializer(a) {
