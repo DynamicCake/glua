@@ -306,7 +306,7 @@ pub fn then_test() {
   }
   let lua = glua.new()
   let assert Ok(#(lua, 4.0)) = deser.run(lua, glua.int(4), positive_deser)
-  let assert Error([DeserializeError("PositiveNum", "Float", [])]) =
+  let assert Error([DeserializeError("PositiveNum", "Int", [])]) =
     deser.run(lua, glua.int(-4), positive_deser)
 }
 

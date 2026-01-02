@@ -63,9 +63,8 @@ pub fn string(v: String) -> ValueRef
 @external(erlang, "glua_ffi", "coerce")
 pub fn bool(v: Bool) -> ValueRef
 
-pub fn int(v: Int) -> ValueRef {
-  float(int.to_float(v))
-}
+@external(erlang, "glua_ffi", "coerce")
+pub fn int(v: Int) -> ValueRef
 
 @external(erlang, "glua_ffi", "coerce")
 pub fn float(v: Float) -> ValueRef
@@ -93,10 +92,6 @@ pub fn table_decoder(
   }
 
   decode.list(of: inner)
-}
-
-pub fn list(values: List(a), encoder: fn(a) -> ValueRef) -> List(ValueRef) {
-  list.map(values, encoder)
 }
 
 @external(erlang, "glua_ffi", "wrap_fun")
@@ -160,11 +155,12 @@ fn list_substraction(a: List(a), b: List(a)) -> List(a)
 /// ```
 pub fn sandbox(state lua: Lua, keys keys: List(String)) -> Result(Lua, LuaError) {
   let msg = string.join(keys, with: ".") <> " is sandboxed"
-  set(lua, ["_G", ..keys], sandbox_fun(msg))
+  let #(fun, lua) = sandbox_fun(lua, msg)
+  set(lua, ["_G", ..keys], fun)
 }
 
 @external(erlang, "glua_ffi", "sandbox_fun")
-fn sandbox_fun(msg: String) -> ValueRef
+fn sandbox_fun(state: Lua, msg: String) -> #(ValueRef, Lua)
 
 /// Gets a private value that is not exposed to the Lua runtime.
 ///
@@ -419,7 +415,7 @@ fn do_call_function(
 
 pub fn call_function(
   state lua: Lua,
-  ref fun: Function,
+  fun fun: Function,
   args args: List(ValueRef),
 ) -> Result(#(Lua, List(ValueRef)), LuaError) {
   do_call_function(lua, fun, args)

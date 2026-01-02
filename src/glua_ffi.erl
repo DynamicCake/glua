@@ -3,7 +3,7 @@
 -import(luerl_lib, [lua_error/2]).
 -include_lib("luerl/include/luerl.hrl").
 
--export([coerce/1, coerce_nil/0, coerce_userdata/1, wrap_fun/2, sandbox_fun/1, get_table_keys/2, get_table_keys_dec/2, get_table_key/3,
+-export([coerce/1, coerce_nil/0, coerce_userdata/1, wrap_fun/2, sandbox_fun/2, get_table_keys/2, get_table_keys_dec/2, get_table_key/3,
          get_private/2, set_table_keys/3, load/2, load_file/2, eval/2, eval_dec/2, eval_file/2, encode_table/2, encode_userdata/2,
          eval_file_dec/2, eval_chunk/2, eval_chunk_dec/2, call_function/3, call_function_dec/3, classify/1, unwrap_userdata/1,
          get_table_transform/4, get_table_list_transform/4]).
@@ -200,9 +200,11 @@ wrap_fun(State, Fun) ->
     {T, St} = luerl:encode(NewFun, State),
     {St, T}.
 
-sandbox_fun(Msg) ->
-    fun(_, State) -> {error, map_error(lua_error({error_call, [Msg]}, State))} end.
-
+sandbox_fun(St, Msg) ->
+    Fun = fun(_, State) -> 
+            {error, map_error(lua_error({error_call, [Msg]}, State))}
+    end,
+    luerl:encode(Fun, St).
 
 get_table_key(Lua, Table, Key) ->
     case luerl:get_table_key(Table, Key, Lua) of
