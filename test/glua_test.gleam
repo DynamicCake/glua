@@ -20,8 +20,8 @@ pub fn get_table_test() {
     #("euler's number", 3.0),
   ]
 
-  let #(lua, cool_numbers) =
-    glua.function(lua, fn(lua, _params) {
+  let cool_numbers =
+    glua.function(fn(lua, _params) {
       let #(lua, table) =
         glua.table(
           lua,
@@ -30,6 +30,7 @@ pub fn get_table_test() {
         )
       #(lua, [table])
     })
+    |> glua.func_to_ref
 
   let assert Ok(lua) = glua.set(lua, ["cool_numbers"], cool_numbers)
   let assert Ok(#(lua, [table])) =
@@ -209,7 +210,7 @@ pub fn set_test() {
     #(lua, list.map([count], glua.int))
   }
 
-  let #(lua, encoded) = glua.function(lua, count_odd)
+  let encoded = glua.function(count_odd) |> glua.func_to_ref
   let assert Ok(lua) = glua.set(lua, ["count_odd"], encoded)
 
   let #(lua, arg) =
@@ -223,22 +224,26 @@ pub fn set_test() {
 
   assert result == glua.int(5)
 
-  let #(lua, is_even) =
-    glua.function(lua, fn(lua, args) {
-      let assert [arg] = args
-      let assert Ok(#(lua, arg)) = deser.run(lua, arg, deser.int)
-      #(lua, list.map([int.is_even(arg)], glua.bool))
-    })
-  let #(lua, is_odd) =
-    glua.function(lua, fn(lua, args) {
-      let assert [arg] = args
-      let assert Ok(#(lua, arg)) = deser.run(lua, arg, deser.int)
-      #(lua, list.map([int.is_odd(arg)], glua.bool))
-    })
   let #(lua, tbl) =
     glua.table(lua, [
-      #(glua.string("is_even"), is_even),
-      #(glua.string("is_odd"), is_odd),
+      #(
+        glua.string("is_even"),
+        glua.function(fn(lua, args) {
+          let assert [arg] = args
+          let assert Ok(#(lua, arg)) = deser.run(lua, arg, deser.int)
+          #(lua, list.map([int.is_even(arg)], glua.bool))
+        })
+          |> glua.func_to_ref,
+      ),
+      #(
+        glua.string("is_odd"),
+        glua.function(fn(lua, args) {
+          let assert [arg] = args
+          let assert Ok(#(lua, arg)) = deser.run(lua, arg, deser.int)
+          #(lua, list.map([int.is_odd(arg)], glua.bool))
+        })
+          |> glua.func_to_ref,
+      ),
     ])
 
   let arg = glua.int(4)
@@ -434,8 +439,9 @@ pub fn nested_function_references_test() {
 
 pub fn alloc_test() {
   let #(lua, table) = glua.table(glua.new(), [])
-  let #(lua, proxy) =
-    glua.function(lua, fn(lua, _args) { #(lua, [glua.string("constant")]) })
+  let proxy =
+    glua.function(fn(lua, _args) { #(lua, [glua.string("constant")]) })
+    |> glua.func_to_ref
   let #(lua, metatable) = glua.table(lua, [#(glua.string("__index"), proxy)])
   let assert Ok(#(lua, _)) =
     glua.call_function_by_name(lua, ["setmetatable"], [table, metatable])

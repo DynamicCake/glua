@@ -3,7 +3,7 @@
 -import(luerl_lib, [lua_error/2]).
 -include_lib("luerl/include/luerl.hrl").
 
--export([coerce/1, coerce_nil/0, coerce_userdata/1, wrap_fun/2, sandbox_fun/2, get_table_keys/2, get_table_keys_dec/2, get_table_key/3,
+-export([coerce/1, coerce_nil/0, coerce_userdata/1, wrap_fun/1, sandbox_fun/2, get_table_keys/2, get_table_keys_dec/2, get_table_key/3,
          get_private/2, set_table_keys/3, load/2, load_file/2, eval/2, eval_dec/2, eval_file/2, encode_table/2, encode_userdata/2,
          eval_file_dec/2, eval_chunk/2, eval_chunk_dec/2, call_function/3, call_function_dec/3, classify/1, unwrap_userdata/1,
          get_table_transform/4, get_table_list_transform/4, userdata_exists/2, table_exists/2]).
@@ -183,13 +183,12 @@ encode_userdata(State, Values) ->
     {Data, St} = luerl_heap:alloc_userdata(Values, State),
     {St, Data}.
 
-wrap_fun(State, Fun) ->
-    NewFun = fun(Args, St0) ->
-        {St1, Return} = Fun(St0, Args),
+wrap_fun(Fun) ->
+    NewFun = fun(Args, St) ->
+        {St1, Return} = Fun(St, Args),
         {Return, St1}
     end,
-    {T, St} = luerl:encode(NewFun, State),
-    {St, T}.
+    #erl_func{code=NewFun}.
 
 sandbox_fun(St, Msg) ->
     Fun = fun(_, State) -> 

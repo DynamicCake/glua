@@ -95,9 +95,12 @@ pub fn table_decoder(
 
 @external(erlang, "glua_ffi", "wrap_fun")
 pub fn function(
-  lua: Lua,
   fun: fn(Lua, List(ValueRef)) -> #(Lua, List(ValueRef)),
-) -> #(Lua, ValueRef)
+) -> Function
+
+/// Downgrade a `Function` to a `ValueRef`
+@external(erlang, "glua_ffi", "coerce")
+pub fn func_to_ref(func: Function) -> ValueRef
 
 /// Creates a new Lua VM instance
 @external(erlang, "luerl", "init")
@@ -427,8 +430,8 @@ pub fn call_function_by_name(
   args args: List(ValueRef),
 ) -> Result(#(Lua, List(ValueRef)), LuaError) {
   use fun <- result.try(get(lua, keys))
-  call_function(lua, coerce_funciton(fun), args)
+  call_function(lua, coerce_function(fun), args)
 }
 
 @external(erlang, "glua_ffi", "coerce")
-fn coerce_funciton(func: ValueRef) -> Function
+fn coerce_function(func: ValueRef) -> Function

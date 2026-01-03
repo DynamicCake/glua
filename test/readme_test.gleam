@@ -137,8 +137,8 @@ pub fn call_functions_test() {
 
 pub fn expose_functions_test() {
   let lua = glua.new()
-  let #(lua, fun) =
-    glua.function(lua, fn(lua, args) {
+  let fun =
+    glua.function(fn(lua, args) {
       // Since Gleam is a statically typed language, each and every argument must be decoded
       let assert [x, min, max] = args
       let assert Ok(#(lua, x)) = deser.run(lua, x, deser.number)
@@ -149,6 +149,7 @@ pub fn expose_functions_test() {
 
       #(lua, [glua.float(result)])
     })
+    |> glua.func_to_ref
 
   let keys = ["my_functions", "clamp"]
 

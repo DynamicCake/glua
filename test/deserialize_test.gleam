@@ -98,8 +98,9 @@ pub fn subfield_err_test() {
 pub fn field_metatable_test() {
   let lua = glua.new()
   let #(lua, data) = glua.table(lua, [])
-  let #(lua, func) =
-    glua.function(lua, fn(lua, _args) { #(lua, [glua.string("pong")]) })
+  let func =
+    glua.function(fn(lua, _args) { #(lua, [glua.string("pong")]) })
+    |> glua.func_to_ref
   let #(lua, metatable) =
     glua.table(lua, [
       #(glua.string("__index"), func),
