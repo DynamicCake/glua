@@ -36,7 +36,7 @@ pub type LuaRuntimeExceptionKind {
   BadArith(operator: String, args: List(String))
   /// The exception that happens when a call to assert is made passing a value that evalues to `false` as the first argument.
   AssertError(message: String)
-  /// An exception that could not be identified
+  /// An exception that could not be identified.
   UnknownException(dynamic.Dynamic)
 }
 

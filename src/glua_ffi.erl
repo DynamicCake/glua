@@ -6,7 +6,7 @@
 -export([coerce/1, coerce_nil/0, coerce_userdata/1, wrap_fun/2, sandbox_fun/2, get_table_keys/2, get_table_keys_dec/2, get_table_key/3,
          get_private/2, set_table_keys/3, load/2, load_file/2, eval/2, eval_dec/2, eval_file/2, encode_table/2, encode_userdata/2,
          eval_file_dec/2, eval_chunk/2, eval_chunk_dec/2, call_function/3, call_function_dec/3, classify/1, unwrap_userdata/1,
-         get_table_transform/4, get_table_list_transform/4]).
+         get_table_transform/4, get_table_list_transform/4, userdata_exists/2, table_exists/2]).
 
 %% helper to convert luerl return values to a format
 %% that is more suitable for use in Gleam code
@@ -37,7 +37,7 @@ classify(N) when is_float(N) ->
 classify({tref,_}) ->
     <<"Table">>;
 classify({usdref,_}) ->
-    <<"UserDef">>;
+    <<"UserData">>;
 classify({eref,_}) ->
     <<"Unknown">>;
 classify({funref,_,_}) ->
@@ -196,6 +196,18 @@ sandbox_fun(St, Msg) ->
             {error, map_error(lua_error({error_call, [Msg]}, State))}
     end,
     luerl:encode(Fun, St).
+
+table_exists(State, Table) -> 
+    case luerl_heap:chk_table(Table, State) of
+        ok -> true;
+        error -> false
+    end.
+
+userdata_exists(State, Table) -> 
+    case luerl_heap:chk_userdata(Table, State) of
+        ok -> true;
+        error -> false
+    end.
 
 get_table_key(Lua, Table, Key) ->
     case luerl:get_table_key(Table, Key, Lua) of

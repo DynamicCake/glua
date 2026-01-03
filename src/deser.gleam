@@ -3,6 +3,7 @@
 //// The main difference is that it can change the state of a lua program due to metatables.
 //// If you do not wish to keep the changed state, discard the new state.
 
+import gleam/bool
 import gleam/dict.{type Dict}
 import gleam/dynamic
 import gleam/float
@@ -272,17 +273,18 @@ pub const userdata: Deserializer(dynamic.Dynamic) = Deserializer(
 fn unwrap_userdata(a: userdata) -> Result(dynamic.Dynamic, Nil)
 
 fn deser_user_defined(lua, data: ValueRef) -> Return(dynamic.Dynamic) {
-  let ret = run_dynamic_function(lua, data, "UserDef", dynamic.nil())
-  let #(dyn, lua, errs) = ret
-  case errs {
-    [] ->
-      case unwrap_userdata(dyn) {
-        Ok(dyn) -> #(dyn, lua, [])
-        Error(Nil) -> #(dynamic.nil(), lua, [
-          DeserializeError("UserDef", classify(data), []),
-        ])
-      }
-    _ -> ret
+  let got = classify(data)
+  let error = #(dynamic.nil(), lua, [DeserializeError("UserData", got, [])])
+  use <- bool.guard(got != "UserData", error)
+  use <- bool.guard(
+    !userdata_exists(lua, data),
+    #(dynamic.nil(), lua, [
+      DeserializeError("UserData", "NonexistentUserData", []),
+    ]),
+  )
+  case unwrap_userdata(decode(data, lua)) {
+    Ok(dyn) -> #(dyn, lua, [])
+    Error(Nil) -> error
   }
 }
 
@@ -311,6 +313,12 @@ pub fn list(of inner: Deserializer(a)) -> Deserializer(List(a)) {
     let not_table_list = #([], lua, [DeserializeError("TableList", class, [])])
     case class {
       "Table" -> {
+        use <- bool.guard(
+          !table_exists(lua, data),
+          #([], lua, [
+            DeserializeError("TableList", "NonexistentTable", []),
+          ]),
+        )
         let res =
           get_table_list_transform(lua, data, #([], lua, []), fn(it, acc) {
             case acc.2 {
@@ -352,6 +360,10 @@ pub fn dict(
     let class = classify(data)
     case class {
       "Table" -> {
+        use <- bool.guard(
+          !table_exists(lua, data),
+          #(dict.new(), lua, [DeserializeError("Table", "NonexistentTable", [])]),
+        )
         get_table_transform(lua, data, #(dict.new(), lua, []), fn(k, v, a) {
           // If there are any errors from previous key-value pairs then we
           // don't need to run the decoders, instead return the existing acc.
@@ -365,6 +377,12 @@ pub fn dict(
     }
   })
 }
+
+@external(erlang, "glua_ffi", "table_exists")
+fn table_exists(state: Lua, table: ValueRef) -> Bool
+
+@external(erlang, "glua_ffi", "userdata_exists")
+fn userdata_exists(state: Lua, userdata: ValueRef) -> Bool
 
 /// Preconditions: `table` is a lua table
 @external(erlang, "glua_ffi", "get_table_transform")

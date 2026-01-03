@@ -331,3 +331,16 @@ pub fn function_err_test() {
   let assert Error([DeserializeError("Function", "Table", [])]) =
     deser.run(lua, func, deser.function)
 }
+
+pub fn nonexistent_table_test() {
+  let #(_lua, ref) =
+    glua.table(glua.new(), [#(glua.string("key"), glua.string("value"))])
+  let assert Error([DeserializeError("Table", "NonexistentTable", [])]) =
+    deser.run(glua.new(), ref, deser.dict(deser.string, deser.string))
+}
+
+pub fn nonexistent_userdata_test() {
+  let #(_lua, ref) = glua.userdata(glua.new(), 3)
+  let assert Error([DeserializeError("UserData", "NonexistentUserData", [])]) =
+    deser.run(glua.new(), ref, deser.userdata)
+}
