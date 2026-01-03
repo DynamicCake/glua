@@ -33,10 +33,10 @@ pub fn deser_test() {
   let deserializer = {
     use name <- deser.field(glua.string("name"), deser.string)
     use language <- deser.field(glua.string("written_in"), deser.string)
-    deser.success(lua, Project(name:, language:))
+    deser.success(Project(name:, language:))
   }
 
-  let assert Ok(#(_lua, project)) = deser.run(lua, table, deserializer)
+  let assert Ok(project) = deser.run(lua, table, deserializer)
   assert project == Project(name: "glua", language: "gleam")
 }
 
@@ -103,10 +103,10 @@ pub fn table_deocding_test() {
   let assert Ok(#(lua, [result])) =
     glua.eval(state: lua, code: "return my_table.my_second_value")
 
-  let assert Ok(#(lua, 2.1)) = deser.run(lua, result, deser.number)
+  let assert Ok(2.1) = deser.run(lua, result, deser.number)
   // or we can get the whole table and decode it back to a list of tuples
   let assert Ok(table) = glua.get(state: lua, keys: ["my_table"])
-  let assert Ok(#(_lua, table)) =
+  let assert Ok(table) =
     deser.run(lua, table, deser.dict(deser.string, deser.number))
 
   assert table
@@ -116,13 +116,13 @@ pub fn table_deocding_test() {
 pub fn call_functions_test() {
   let lua = glua.new()
   let assert Ok(val) = glua.get(state: lua, keys: ["math", "max"])
-  let assert Ok(#(lua, fun)) = deser.run(lua, val, deser.function)
+  let assert Ok(fun) = deser.run(lua, val, deser.function)
   let args = [1, 20, 7, 18] |> list.map(glua.int)
 
   let assert Ok(#(lua, [result])) =
     glua.call_function(state: lua, fun: fun, args:)
 
-  let assert Ok(#(lua, result)) = deser.run(lua, result, deser.number)
+  let assert Ok(result) = deser.run(lua, result, deser.number)
 
   assert result == 20.0
 
@@ -130,7 +130,7 @@ pub fn call_functions_test() {
   let assert Ok(#(_lua, [result])) =
     glua.call_function_by_name(state: lua, keys: ["math", "max"], args:)
 
-  let assert Ok(#(_lua, result)) = deser.run(lua, result, deser.number)
+  let assert Ok(result) = deser.run(lua, result, deser.number)
 
   assert result == 20.0
 }
@@ -141,9 +141,9 @@ pub fn expose_functions_test() {
     glua.function(fn(lua, args) {
       // Since Gleam is a statically typed language, each and every argument must be decoded
       let assert [x, min, max] = args
-      let assert Ok(#(lua, x)) = deser.run(lua, x, deser.number)
-      let assert Ok(#(lua, min)) = deser.run(lua, min, deser.number)
-      let assert Ok(#(lua, max)) = deser.run(lua, max, deser.number)
+      let assert Ok(x) = deser.run(lua, x, deser.number)
+      let assert Ok(min) = deser.run(lua, min, deser.number)
+      let assert Ok(max) = deser.run(lua, max, deser.number)
 
       let result = float.clamp(x, min, max)
 

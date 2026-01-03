@@ -97,10 +97,10 @@ pub fn run(
   lua: Lua,
   data: Value,
   deser: Deserializer(t),
-) -> Result(#(Lua, t), List(DeserializeError)) {
-  let #(maybe_invalid_data, lua, errors) = deser.function(lua, data)
+) -> Result(t, List(DeserializeError)) {
+  let #(maybe_invalid_data, _lua, errors) = deser.function(lua, data)
   case errors {
-    [] -> Ok(#(lua, maybe_invalid_data))
+    [] -> Ok(maybe_invalid_data)
     [_, ..] -> Error(errors)
   }
 }
@@ -130,9 +130,8 @@ fn push_path(layer: Return(t), path: List(Value)) -> Return(t) {
   #(layer.0, layer.1, errors)
 }
 
-// TOOD: Make it take lua
-pub fn success(lua: Lua, data: t) -> Deserializer(t) {
-  Deserializer(function: fn(_, _) { #(data, lua, []) })
+pub fn success(data: t) -> Deserializer(t) {
+  Deserializer(function: fn(lua, _) { #(data, lua, []) })
 }
 
 pub fn deser_error(
@@ -463,11 +462,11 @@ pub fn collapse_errors(
 
 pub fn then(
   decoder: Deserializer(a),
-  next: fn(Lua, a) -> Deserializer(b),
+  next: fn(a) -> Deserializer(b),
 ) -> Deserializer(b) {
   Deserializer(function: fn(lua, dynamic_data) {
     let #(data, lua, errors) = decoder.function(lua, dynamic_data)
-    let decoder = next(lua, data)
+    let decoder = next(data)
     let #(data, lua, _) as layer = decoder.function(lua, dynamic_data)
     case errors {
       [] -> layer

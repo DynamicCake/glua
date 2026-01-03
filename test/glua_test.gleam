@@ -36,7 +36,7 @@ pub fn get_table_test() {
   let assert Ok(#(lua, [table])) =
     glua.call_function_by_name(lua, ["cool_numbers"], [])
 
-  let assert Ok(#(_lua, table)) =
+  let assert Ok(table) =
     deser.run(lua, table, deser.dict(deser.string, deser.number))
 
   assert table == dict.from_list(my_table)
@@ -120,7 +120,7 @@ pub fn userdata_test() {
   let #(lua, data) = glua.userdata(lua, userdata)
   let assert Ok(lua) = glua.set(lua, ["my_userdata"], data)
   let assert Ok(#(lua, [result])) = glua.eval(lua, "return my_userdata")
-  let assert Ok(#(lua, result)) = deser.run(lua, result, deser.userdata)
+  let assert Ok(result) = deser.run(lua, result, deser.userdata)
   let assert Ok(result) = decode.run(result, userdata_decoder)
 
   assert result == userdata
@@ -139,7 +139,7 @@ pub fn get_test() {
   let lua = glua.new()
 
   let assert Ok(pi) = glua.get(state: lua, keys: ["math", "pi"])
-  let assert Ok(#(lua, pi)) = deser.run(lua, pi, deser.number)
+  let assert Ok(pi) = deser.run(lua, pi, deser.number)
 
   assert pi >. 3.14 && pi <. 3.15
 
@@ -181,7 +181,7 @@ pub fn set_test() {
   let assert Ok(lua) =
     glua.set(state: glua.new(), keys: ["_VERSION"], value: encoded)
   let assert Ok(result) = glua.get(state: lua, keys: ["_VERSION"])
-  let assert Ok(#(lua, result)) = deser.run(lua, result, deser.string)
+  let assert Ok(result) = deser.run(lua, result, deser.string)
 
   assert result == "custom version"
 
@@ -199,12 +199,12 @@ pub fn set_test() {
   let assert Ok(lua) = glua.set(lua, keys, encoded)
 
   let assert Ok(val) = glua.get(lua, keys)
-  let assert Ok(#(lua, val)) = deser.run(lua, val, deser.list(deser.int))
+  let assert Ok(val) = deser.run(lua, val, deser.list(deser.int))
   assert val == [4, 16, 49, 144]
 
   let count_odd = fn(lua: glua.Lua, args: List(glua.Value)) {
     let assert [list] = args
-    let assert Ok(#(lua, list)) = deser.run(lua, list, deser.list(deser.int))
+    let assert Ok(list) = deser.run(lua, list, deser.list(deser.int))
 
     let count = list.count(list, int.is_odd)
     #(lua, list.map([count], glua.int))
@@ -230,7 +230,7 @@ pub fn set_test() {
         glua.string("is_even"),
         glua.function(fn(lua, args) {
           let assert [arg] = args
-          let assert Ok(#(lua, arg)) = deser.run(lua, arg, deser.int)
+          let assert Ok(arg) = deser.run(lua, arg, deser.int)
           #(lua, list.map([int.is_even(arg)], glua.bool))
         })
           |> glua.func_to_val,
@@ -239,7 +239,7 @@ pub fn set_test() {
         glua.string("is_odd"),
         glua.function(fn(lua, args) {
           let assert [arg] = args
-          let assert Ok(#(lua, arg)) = deser.run(lua, arg, deser.int)
+          let assert Ok(arg) = deser.run(lua, arg, deser.int)
           #(lua, list.map([int.is_odd(arg)], glua.bool))
         })
           |> glua.func_to_val,
@@ -383,7 +383,7 @@ pub fn call_function_test() {
     glua.eval(state: glua.new(), code: "return string.reverse")
 
   let encoded = glua.string("auL")
-  let assert Ok(#(lua, fun)) = deser.run(lua, fun, deser.function)
+  let assert Ok(fun) = deser.run(lua, fun, deser.function)
 
   let assert Ok(#(lua, [result])) =
     glua.call_function(state: lua, fun: fun, args: [encoded])
@@ -392,7 +392,7 @@ pub fn call_function_test() {
 
   let assert Ok(#(lua, [fun])) =
     glua.eval(state: lua, code: "return function(a, b) return a .. b end")
-  let assert Ok(#(lua, fun)) = deser.run(lua, fun, deser.function)
+  let assert Ok(fun) = deser.run(lua, fun, deser.function)
 
   let args = list.map(["Lua in ", "Gleam"], glua.string)
 
@@ -417,8 +417,7 @@ pub fn call_function_by_name_test() {
   let arg = glua.float(10.2)
   let assert Ok(#(lua, [result])) =
     glua.call_function_by_name(state: lua, keys: ["math", "type"], args: [arg])
-  let assert Ok(#(_lua, result)) =
-    deser.run(lua, result, deser.optional(deser.string))
+  let assert Ok(result) = deser.run(lua, result, deser.optional(deser.string))
 
   assert result == option.Some("float")
 }
@@ -427,9 +426,9 @@ pub fn nested_function_references_test() {
   let code = "return function() return math.sqrt end"
 
   let assert Ok(#(lua, [ref])) = glua.eval(state: glua.new(), code:)
-  let assert Ok(#(lua, fun)) = deser.run(lua, ref, deser.function)
+  let assert Ok(fun) = deser.run(lua, ref, deser.function)
   let assert Ok(#(lua, [ref])) = glua.call_function(state: lua, fun:, args: [])
-  let assert Ok(#(lua, fun)) = deser.run(lua, ref, deser.function)
+  let assert Ok(fun) = deser.run(lua, ref, deser.function)
 
   let arg = glua.int(400)
   let assert Ok(#(_, [result])) =

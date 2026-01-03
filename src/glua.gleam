@@ -3,7 +3,6 @@
 //// Gleam wrapper around [Luerl](https://github.com/rvirding/luerl).
 
 import gleam/dynamic
-import gleam/dynamic/decode
 import gleam/list
 import gleam/pair
 import gleam/result
