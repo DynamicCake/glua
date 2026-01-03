@@ -76,19 +76,6 @@ pub fn table_list(lua: Lua, values: List(Value)) -> #(Lua, Value) {
 @external(erlang, "glua_ffi", "encode_userdata")
 pub fn userdata(lua: Lua, val: anything) -> #(Lua, Value)
 
-pub fn table_decoder(
-  keys_decoder: decode.Decoder(a),
-  values_decoder: decode.Decoder(b),
-) -> decode.Decoder(List(#(a, b))) {
-  let inner = {
-    use key <- decode.field(0, keys_decoder)
-    use val <- decode.field(1, values_decoder)
-    decode.success(#(key, val))
-  }
-
-  decode.list(of: inner)
-}
-
 @external(erlang, "glua_ffi", "wrap_fun")
 pub fn function(fun: fn(Lua, List(Value)) -> #(Lua, List(Value))) -> Function
 

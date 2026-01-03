@@ -3,10 +3,10 @@
 -import(luerl_lib, [lua_error/2]).
 -include_lib("luerl/include/luerl.hrl").
 
--export([coerce/1, coerce_nil/0, coerce_userdata/1, wrap_fun/1, sandbox_fun/2, get_table_keys/2, get_table_keys_dec/2, get_table_key/3,
-         get_private/2, set_table_keys/3, load/2, load_file/2, eval/2, eval_dec/2, eval_file/2, encode_table/2, encode_userdata/2,
-         eval_file_dec/2, eval_chunk/2, eval_chunk_dec/2, call_function/3, call_function_dec/3, classify/1, unwrap_userdata/1,
-         get_table_transform/4, get_table_list_transform/4, userdata_exists/2, table_exists/2]).
+-export([coerce/1, coerce_nil/0, coerce_userdata/1, wrap_fun/1, sandbox_fun/2, get_table_keys/2, get_table_key/3,
+         get_private/2, set_table_keys/3, load/2, load_file/2, eval/2, eval_file/2, encode_table/2, encode_userdata/2,
+         eval_chunk/2, call_function/3, classify/1, unwrap_userdata/1, get_table_transform/4, 
+         get_table_list_transform/4, userdata_exists/2, table_exists/2]).
 
 %% helper to convert luerl return values to a format
 %% that is more suitable for use in Gleam code
@@ -83,52 +83,6 @@ do_list_transform(Arr, Acc, Func) ->
     catch
         throw:hole -> {error, nil}
     end.
-
-
-%% helper to determine if a value is encoded or not
-%% borrowed from https://github.com/tv-labs/lua/blob/5bf2069c2bd0b8f19ae8f3ea1e6947a44c3754d8/lib/lua/util.ex#L19-L35
-%% Also see (luerl 1.5.1): https://hexdocs.pm/luerl/luerl.html#t:luerldata/0
-is_encoded(nil) ->
-    true;
-is_encoded(true) ->
-    true;
-is_encoded(false) ->
-    true;
-is_encoded(Binary) when is_binary(Binary) ->
-    true;
-is_encoded(N) when is_number(N) ->
-    true;
-is_encoded({tref,_}) ->
-    true;
-is_encoded({usrdef,_}) ->
-    true;
-% Rationale: https://github.com/rvirding/luerl/blob/8756287ed2083795e7456855edf56a065a49b5aa/src/luerl.erl#L924-L939
-% has no mentions of eref
-is_encoded({eref,_}) ->
-    false;
-is_encoded({funref,_,_}) ->
-    true;
-is_encoded({erl_func,_}) ->
-    true;
-is_encoded({erl_mfa,_,_,_}) ->
-    true;
-is_encoded(_) ->
-    false.
-
-encode(X, St0) ->
-    case is_encoded(X) of
-        true -> {X, St0};
-        false -> luerl:encode(X, St0)
-    end.
-
-encode_list(L, St0) when is_list(L) ->
-    Enc = fun(X, {L1, St}) ->
-                  {Enc, St1} = encode(X, St),
-                  {[Enc | L1], St1}
-          end,
-    {L1, St1} = lists:foldl(Enc, {[], St0}, L),
-    {lists:reverse(L1), St1}.
-
 
 %% TODO: Improve compiler errors handling and try to detect more errors
 map_error({error, [{_, luerl_parse, Errors} | _], _}) ->
@@ -228,16 +182,6 @@ get_table_keys(Lua, Keys) ->
             to_gleam(Other)
     end.
 
-get_table_keys_dec(Lua, Keys) ->
-    case luerl:get_table_keys_dec(Keys, Lua) of
-        {ok, nil, _} ->
-            {error, key_not_found};
-        {ok, Value, _} ->
-            {ok, Value};
-        Other ->
-            to_gleam(Other)
-    end.
-
 set_table_keys(Lua, Keys, Value) ->
     to_gleam(luerl:set_table_keys(Keys, Value, Lua)).
 
@@ -253,36 +197,15 @@ eval(Lua, Code) ->
     to_gleam(luerl:do(
                  unicode:characters_to_list(Code), Lua)).
 
-eval_dec(Lua, Code) ->
-    to_gleam(luerl:do_dec(
-                 unicode:characters_to_list(Code), Lua)).
-
 eval_chunk(Lua, Chunk) ->
     to_gleam(luerl:call_chunk(Chunk, Lua)).
-
-eval_chunk_dec(Lua, Chunk) ->
-    call_function_dec(Lua, Chunk, []).
 
 eval_file(Lua, Path) ->
     to_gleam(luerl:dofile(
                  unicode:characters_to_list(Path), Lua)).
 
-eval_file_dec(Lua, Path) ->
-    to_gleam(luerl:dofile_dec(
-                 unicode:characters_to_list(Path), Lua)).
-
 call_function(Lua, Fun, Args) ->
     to_gleam(luerl:call(Fun, Args, Lua)).
-
-call_function_dec(Lua, Fun, Args) ->
-    {EncodedArgs, St1} = encode_list(Args, Lua),
-    case luerl:call(Fun, EncodedArgs, St1) of
-        {ok, Ret, St2} ->
-            Values = luerl:decode_list(Ret, St2),
-            {ok, {St2, Values}};
-        Other ->
-            to_gleam(Other)
-    end.
 
 get_private(Lua, Key) ->
     try
