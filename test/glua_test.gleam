@@ -30,7 +30,7 @@ pub fn get_table_test() {
         )
       #(lua, [table])
     })
-    |> glua.func_to_ref
+    |> glua.func_to_val
 
   let assert Ok(lua) = glua.set(lua, ["cool_numbers"], cool_numbers)
   let assert Ok(#(lua, [table])) =
@@ -202,7 +202,7 @@ pub fn set_test() {
   let assert Ok(#(lua, val)) = deser.run(lua, val, deser.list(deser.int))
   assert val == [4, 16, 49, 144]
 
-  let count_odd = fn(lua: glua.Lua, args: List(glua.ValueRef)) {
+  let count_odd = fn(lua: glua.Lua, args: List(glua.Value)) {
     let assert [list] = args
     let assert Ok(#(lua, list)) = deser.run(lua, list, deser.list(deser.int))
 
@@ -210,7 +210,7 @@ pub fn set_test() {
     #(lua, list.map([count], glua.int))
   }
 
-  let encoded = glua.function(count_odd) |> glua.func_to_ref
+  let encoded = glua.function(count_odd) |> glua.func_to_val
   let assert Ok(lua) = glua.set(lua, ["count_odd"], encoded)
 
   let #(lua, arg) =
@@ -233,7 +233,7 @@ pub fn set_test() {
           let assert Ok(#(lua, arg)) = deser.run(lua, arg, deser.int)
           #(lua, list.map([int.is_even(arg)], glua.bool))
         })
-          |> glua.func_to_ref,
+          |> glua.func_to_val,
       ),
       #(
         glua.string("is_odd"),
@@ -242,7 +242,7 @@ pub fn set_test() {
           let assert Ok(#(lua, arg)) = deser.run(lua, arg, deser.int)
           #(lua, list.map([int.is_odd(arg)], glua.bool))
         })
-          |> glua.func_to_ref,
+          |> glua.func_to_val,
       ),
     ])
 
@@ -441,7 +441,7 @@ pub fn alloc_test() {
   let #(lua, table) = glua.table(glua.new(), [])
   let proxy =
     glua.function(fn(lua, _args) { #(lua, [glua.string("constant")]) })
-    |> glua.func_to_ref
+    |> glua.func_to_val
   let #(lua, metatable) = glua.table(lua, [#(glua.string("__index"), proxy)])
   let assert Ok(#(lua, _)) =
     glua.call_function_by_name(lua, ["setmetatable"], [table, metatable])

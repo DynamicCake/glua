@@ -1,6 +1,6 @@
 # Glua
 
-A library for embedding Lua in Gleam applications!
+A library for embedding Lua in Gleam applications powered by [Luerl](https://github.com/rvirding/luerl)!
 
 [![Package Version](https://img.shields.io/hexpm/v/glua)](https://hex.pm/packages/glua)
 [![Hex Docs](https://img.shields.io/badge/hex-docs-ffaff3)](https://hexdocs.pm/glua/)

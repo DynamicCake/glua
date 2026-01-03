@@ -149,7 +149,7 @@ pub fn expose_functions_test() {
 
       #(lua, [glua.float(result)])
     })
-    |> glua.func_to_ref
+    |> glua.func_to_val
 
   let keys = ["my_functions", "clamp"]
 
