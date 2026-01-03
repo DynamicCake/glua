@@ -21,7 +21,7 @@ pub type DeserializeError {
 }
 
 type Return(t) =
-  #(t, Lua, List(DeserializeError))
+  #(t, List(DeserializeError))
 
 pub fn field(
   field_path: Value,
@@ -37,7 +37,7 @@ pub fn subfield(
   next: fn(t) -> Deserializer(final),
 ) -> Deserializer(final) {
   Deserializer(function: fn(lua, data) {
-    let #(out, lua, errors1) =
+    let #(out, errors1) =
       index_into(
         lua,
         field_path,
@@ -45,13 +45,13 @@ pub fn subfield(
         field_decoder.function,
         data,
         fn(lua, data, position) {
-          let #(default, lua, _) = field_decoder.function(lua, data)
-          #(default, lua, [DeserializeError("Field", "Nothing", [])])
+          let #(default, _) = field_decoder.function(lua, data)
+          #(default, [DeserializeError("Field", "Nothing", [])])
           |> push_path(list.reverse(position))
         },
       )
-    let #(out, lua, errors2) = next(out).function(lua, data)
-    #(out, lua, list.append(errors1, errors2))
+    let #(out, errors2) = next(out).function(lua, data)
+    #(out, list.append(errors1, errors2))
   })
 }
 
@@ -84,8 +84,8 @@ fn index_into(
           handle_miss(lua, data, [key, ..position])
         }
         Error(_err) -> {
-          let #(default, lua, _) = inner(lua, data)
-          #(default, lua, [DeserializeError("Table", classify(data), [])])
+          let #(default, _) = inner(lua, data)
+          #(default, [DeserializeError("Table", classify(data), [])])
           |> push_path(list.reverse(position))
         }
       }
@@ -98,7 +98,7 @@ pub fn run(
   data: Value,
   deser: Deserializer(t),
 ) -> Result(t, List(DeserializeError)) {
-  let #(maybe_invalid_data, _lua, errors) = deser.function(lua, data)
+  let #(maybe_invalid_data, errors) = deser.function(lua, data)
   case errors {
     [] -> Ok(maybe_invalid_data)
     [_, ..] -> Error(errors)
@@ -108,8 +108,8 @@ pub fn run(
 pub fn at(path: List(Value), inner: Deserializer(a)) -> Deserializer(a) {
   Deserializer(function: fn(lua, data) {
     index_into(lua, path, [], inner.function, data, fn(lua, data, position) {
-      let #(default, lua, _) = inner.function(lua, data)
-      #(default, lua, [DeserializeError("Field", "Nothing", [])])
+      let #(default, _) = inner.function(lua, data)
+      #(default, [DeserializeError("Field", "Nothing", [])])
       |> push_path(list.reverse(position))
     })
   })
@@ -124,14 +124,14 @@ fn get_table_key(
 
 fn push_path(layer: Return(t), path: List(Value)) -> Return(t) {
   let errors =
-    list.map(layer.2, fn(error) {
+    list.map(layer.1, fn(error) {
       DeserializeError(..error, path: list.append(path, error.path))
     })
-  #(layer.0, layer.1, errors)
+  #(layer.0, errors)
 }
 
 pub fn success(data: t) -> Deserializer(t) {
-  Deserializer(function: fn(lua, _) { #(data, lua, []) })
+  Deserializer(function: fn(_lua, _) { #(data, []) })
 }
 
 pub fn deser_error(
@@ -151,7 +151,7 @@ pub fn optional_field(
   next: fn(t) -> Deserializer(final),
 ) -> Deserializer(final) {
   Deserializer(function: fn(lua, data) {
-    let #(out, lua, errors1) =
+    let #(out, errors1) =
       case get_table_key(lua, data, key) {
         Ok(#(lua, data)) -> {
           field_decoder.function(lua, data)
@@ -162,17 +162,17 @@ pub fn optional_field(
             exception: glua.IllegalIndex(_, _),
             state: _,
           )) -> {
-          #(default, lua, [])
+          #(default, [])
         }
         Error(_err) -> {
-          #(default, lua, [
+          #(default, [
             DeserializeError("Table", classify(data), []),
           ])
         }
       }
       |> push_path([key])
-    let #(out, lua, errors2) = next(out).function(lua, data)
-    #(out, lua, list.append(errors1, errors2))
+    let #(out, errors2) = next(out).function(lua, data)
+    #(out, list.append(errors1, errors2))
   })
 }
 
@@ -183,7 +183,7 @@ pub fn optionally_at(
 ) -> Deserializer(a) {
   Deserializer(function: fn(lua, data) {
     index_into(lua, path, [], inner.function, data, fn(_, _, _) {
-      #(default, lua, [])
+      #(default, [])
     })
   })
 }
@@ -196,8 +196,8 @@ fn run_dynamic_function(
 ) -> Return(t) {
   let got = classify(data)
   case got == expected {
-    True -> #(decode(data, lua), lua, [])
-    False -> #(zero, lua, [
+    True -> #(decode(data, lua), [])
+    False -> #(zero, [
       DeserializeError(expected, got, []),
     ])
   }
@@ -224,12 +224,12 @@ pub const number: Deserializer(Float) = Deserializer(deser_num)
 fn deser_num(lua, data: Value) -> Return(Float) {
   let got = classify(data)
   case got {
-    "Float" -> #(decode(data, lua), lua, [])
+    "Float" -> #(decode(data, lua), [])
     "Int" -> {
       let int: Int = decode(data, lua)
-      #(int.to_float(int), lua, [])
+      #(int.to_float(int), [])
     }
-    _ -> #(0.0, lua, [
+    _ -> #(0.0, [
       DeserializeError("Number", got, []),
     ])
   }
@@ -239,7 +239,7 @@ pub const int: Deserializer(Int) = Deserializer(deser_int)
 
 fn deser_int(lua, data: Value) -> Return(Int) {
   let got = classify(data)
-  let error = #(0, lua, [
+  let error = #(0, [
     DeserializeError("Int", got, []),
   ])
   case got {
@@ -247,12 +247,12 @@ fn deser_int(lua, data: Value) -> Return(Int) {
       let float: Float = decode(data, lua)
       let int = float.truncate(float)
       case int.to_float(int) == float {
-        True -> #(int, lua, [])
+        True -> #(int, [])
         False -> error
       }
     }
     "Int" -> {
-      #(decode(data, lua), lua, [])
+      #(decode(data, lua), [])
     }
     _ -> error
   }
@@ -260,8 +260,8 @@ fn deser_int(lua, data: Value) -> Return(Int) {
 
 pub const raw: Deserializer(Value) = Deserializer(decode_raw)
 
-fn decode_raw(lua, data: Value) -> Return(Value) {
-  #(data, lua, [])
+fn decode_raw(_lua, data: Value) -> Return(Value) {
+  #(data, [])
 }
 
 pub const userdata: Deserializer(dynamic.Dynamic) = Deserializer(
@@ -273,27 +273,27 @@ fn unwrap_userdata(a: userdata) -> Result(dynamic.Dynamic, Nil)
 
 fn deser_user_defined(lua, data: Value) -> Return(dynamic.Dynamic) {
   let got = classify(data)
-  let error = #(dynamic.nil(), lua, [DeserializeError("UserData", got, [])])
+  let error = #(dynamic.nil(), [DeserializeError("UserData", got, [])])
   use <- bool.guard(got != "UserData", error)
   use <- bool.guard(
     !userdata_exists(lua, data),
-    #(dynamic.nil(), lua, [
+    #(dynamic.nil(), [
       DeserializeError("UserData", "NonexistentUserData", []),
     ]),
   )
   case unwrap_userdata(decode(data, lua)) {
-    Ok(dyn) -> #(dyn, lua, [])
+    Ok(dyn) -> #(dyn, [])
     Error(Nil) -> error
   }
 }
 
 pub const function: Deserializer(glua.Function) = Deserializer(deser_function)
 
-fn deser_function(lua: Lua, data: Value) -> Return(glua.Function) {
+fn deser_function(_lua: Lua, data: Value) -> Return(glua.Function) {
   let got = classify(data)
   case got == "Function" {
-    True -> #(coerce_funciton(data), lua, [])
-    False -> #(coerce_funciton(Nil), lua, [
+    True -> #(coerce_funciton(data), [])
+    False -> #(coerce_funciton(Nil), [
       DeserializeError("Function", got, []),
     ])
   }
@@ -309,25 +309,25 @@ fn coerce_funciton(func: anything) -> glua.Function
 pub fn list(of inner: Deserializer(a)) -> Deserializer(List(a)) {
   Deserializer(fn(lua, data) {
     let class = classify(data)
-    let not_table_list = #([], lua, [DeserializeError("TableList", class, [])])
+    let not_table_list = #([], [DeserializeError("TableList", class, [])])
     case class {
       "Table" -> {
         use <- bool.guard(
           !table_exists(lua, data),
-          #([], lua, [
+          #([], [
             DeserializeError("TableList", "NonexistentTable", []),
           ]),
         )
         let res =
-          get_table_list_transform(lua, data, #([], lua, []), fn(it, acc) {
-            case acc.2 {
+          get_table_list_transform(lua, data, #([], []), fn(it, acc) {
+            case acc.1 {
               [] -> {
                 case inner.function(lua, it) {
-                  #(value, lua, []) -> {
-                    #(list.prepend(acc.0, value), lua, acc.2)
+                  #(value, []) -> {
+                    #(list.prepend(acc.0, value), acc.1)
                   }
-                  #(_, lua, errors) ->
-                    push_path(#([], lua, errors), [glua.string("items")])
+                  #(_, errors) ->
+                    push_path(#([], errors), [glua.string("items")])
                 }
               }
               [_, ..] -> acc
@@ -361,18 +361,18 @@ pub fn dict(
       "Table" -> {
         use <- bool.guard(
           !table_exists(lua, data),
-          #(dict.new(), lua, [DeserializeError("Table", "NonexistentTable", [])]),
+          #(dict.new(), [DeserializeError("Table", "NonexistentTable", [])]),
         )
-        get_table_transform(lua, data, #(dict.new(), lua, []), fn(k, v, a) {
+        get_table_transform(lua, data, #(dict.new(), []), fn(k, v, a) {
           // If there are any errors from previous key-value pairs then we
           // don't need to run the decoders, instead return the existing acc.
-          case a.2 {
+          case a.1 {
             [] -> fold_dict(lua, a, k, v, key.function, value.function)
             [_, ..] -> a
           }
         })
       }
-      _ -> #(dict.new(), lua, [DeserializeError("Table", class, [])])
+      _ -> #(dict.new(), [DeserializeError("Table", class, [])])
     }
   })
 }
@@ -394,7 +394,7 @@ fn get_table_transform(
 
 fn fold_dict(
   lua: Lua,
-  acc: #(Dict(k, v), Lua, List(DeserializeError)),
+  acc: #(Dict(k, v), List(DeserializeError)),
   key: Value,
   value: Value,
   key_decoder: fn(Lua, Value) -> Return(k),
@@ -402,29 +402,28 @@ fn fold_dict(
 ) -> Return(Dict(k, v)) {
   // First we decode the key.
   case key_decoder(lua, key) {
-    #(key, lua, []) ->
+    #(key, []) ->
       // Then we decode the value.
       case value_decoder(lua, value) {
-        #(value, lua, []) -> {
+        #(value, []) -> {
           // It worked! Insert the new key-value pair so we can move onto the next.
           let dict = dict.insert(acc.0, key, value)
-          #(dict, lua, acc.2)
+          #(dict, acc.1)
         }
-        #(_, lua, errors) ->
-          push_path(#(dict.new(), lua, errors), [glua.string("values")])
+        #(_, errors) ->
+          push_path(#(dict.new(), errors), [glua.string("values")])
       }
-    #(_, lua, errors) ->
-      push_path(#(dict.new(), lua, errors), [glua.string("keys")])
+    #(_, errors) -> push_path(#(dict.new(), errors), [glua.string("keys")])
   }
 }
 
 pub fn optional(inner: Deserializer(a)) -> Deserializer(Option(a)) {
   Deserializer(function: fn(lua, data) {
     case classify(data) {
-      "Nil" -> #(option.None, lua, [])
+      "Nil" -> #(option.None, [])
       _ -> {
-        let #(data, lua, errors) = inner.function(lua, data)
-        #(option.Some(data), lua, errors)
+        let #(data, errors) = inner.function(lua, data)
+        #(option.Some(data), errors)
       }
     }
   })
@@ -432,8 +431,8 @@ pub fn optional(inner: Deserializer(a)) -> Deserializer(Option(a)) {
 
 pub fn map(decoder: Deserializer(a), transformer: fn(a) -> b) -> Deserializer(b) {
   Deserializer(function: fn(lua, d) {
-    let #(data, lua, errors) = decoder.function(lua, d)
-    #(transformer(data), lua, errors)
+    let #(data, errors) = decoder.function(lua, d)
+    #(transformer(data), errors)
   })
 }
 
@@ -442,8 +441,8 @@ pub fn map_errors(
   transformer: fn(List(DeserializeError)) -> List(DeserializeError),
 ) -> Deserializer(a) {
   Deserializer(function: fn(lua, d) {
-    let #(data, lua, errors) = decoder.function(lua, d)
-    #(data, lua, transformer(errors))
+    let #(data, errors) = decoder.function(lua, d)
+    #(data, transformer(errors))
   })
 }
 
@@ -452,10 +451,10 @@ pub fn collapse_errors(
   name: String,
 ) -> Deserializer(a) {
   Deserializer(function: fn(lua, dynamic_data) {
-    let #(data, lua, errors) as layer = decoder.function(lua, dynamic_data)
+    let #(data, errors) as layer = decoder.function(lua, dynamic_data)
     case errors {
       [] -> layer
-      [_, ..] -> #(data, lua, deser_error(name, dynamic_data))
+      [_, ..] -> #(data, deser_error(name, dynamic_data))
     }
   })
 }
@@ -465,12 +464,12 @@ pub fn then(
   next: fn(Lua, a) -> Deserializer(b),
 ) -> Deserializer(b) {
   Deserializer(function: fn(lua, dynamic_data) {
-    let #(data, lua, errors) = decoder.function(lua, dynamic_data)
+    let #(data, errors) = decoder.function(lua, dynamic_data)
     let decoder = next(lua, data)
-    let #(data, lua, _) as layer = decoder.function(lua, dynamic_data)
+    let #(data, _) as layer = decoder.function(lua, dynamic_data)
     case errors {
       [] -> layer
-      [_, ..] -> #(data, lua, errors)
+      [_, ..] -> #(data, errors)
     }
   })
 }
@@ -480,7 +479,7 @@ pub fn one_of(
   or alternatives: List(Deserializer(a)),
 ) -> Deserializer(a) {
   Deserializer(function: fn(lua, dynamic_data) {
-    let #(_, lua, errors) as layer = first.function(lua, dynamic_data)
+    let #(_, errors) as layer = first.function(lua, dynamic_data)
     case errors {
       [] -> layer
       [_, ..] -> run_decoders(dynamic_data, lua, layer, alternatives)
@@ -498,7 +497,7 @@ fn run_decoders(
     [] -> failure
 
     [decoder, ..decoders] -> {
-      let #(_, lua, errors) as layer = decoder.function(lua, data)
+      let #(_, errors) as layer = decoder.function(lua, data)
       case errors {
         [] -> layer
         [_, ..] -> run_decoders(data, lua, failure, decoders)
@@ -508,7 +507,7 @@ fn run_decoders(
 }
 
 pub fn failure(zero: a, expected: String) -> Deserializer(a) {
-  Deserializer(function: fn(lua, d) { #(zero, lua, deser_error(expected, d)) })
+  Deserializer(function: fn(_lua, d) { #(zero, deser_error(expected, d)) })
 }
 
 pub fn recursive(inner: fn() -> Deserializer(a)) -> Deserializer(a) {

@@ -3,7 +3,6 @@ import gleam/bool
 import gleam/dict
 import gleam/dynamic
 import gleam/list
-import gleam/pair
 import glua
 
 @external(erlang, "glua_ffi", "coerce")
