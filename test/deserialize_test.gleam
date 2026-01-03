@@ -1,7 +1,9 @@
 import deser.{DeserializeError}
+import gleam/bool
 import gleam/dict
 import gleam/dynamic
 import gleam/list
+import gleam/pair
 import glua
 
 @external(erlang, "glua_ffi", "coerce")
@@ -298,7 +300,7 @@ pub fn table_list_err_test() {
 
 pub fn then_test() {
   let positive_deser = {
-    use num <- deser.then(deser.number)
+    use _lua, num <- deser.then(deser.number)
     case num >. 0.0 {
       False -> deser.failure(0.0, "PositiveNum")
       True -> deser.success(num)
@@ -308,6 +310,41 @@ pub fn then_test() {
   let assert Ok(4.0) = deser.run(lua, glua.int(4), positive_deser)
   let assert Error([DeserializeError("PositiveNum", "Int", [])]) =
     deser.run(lua, glua.int(-4), positive_deser)
+}
+
+type Person {
+  Person(name: String, age: Int)
+}
+
+pub fn then_state_test() {
+  let person_deser = {
+    use lua, table <- deser.then(deser.raw)
+    let assert Ok(#(lua, [meta])) =
+      glua.call_function_by_name(lua, ["getmetatable"], [table])
+    let is_person = case
+      deser.run(lua, meta, deser.at([glua.string("type")], deser.string))
+    {
+      Ok(kind) -> kind == "person"
+      Error(_) -> False
+    }
+    use <- bool.guard(!is_person, deser.failure(Person("", 0), "Person"))
+    use name <- deser.field(glua.string("name"), deser.string)
+    use age <- deser.field(glua.string("age"), deser.int)
+    deser.success(Person(name, age))
+  }
+
+  let lua = glua.new()
+  let #(lua, data) =
+    glua.table(lua, [
+      #(glua.string("name"), glua.string("Captain Falcon")),
+      #(glua.string("age"), glua.int(36)),
+    ])
+  let #(lua, metatable) =
+    glua.table(lua, [#(glua.string("type"), glua.string("person"))])
+  let assert Ok(#(lua, _)) =
+    glua.call_function_by_name(lua, ["setmetatable"], [data, metatable])
+  let assert Ok(person) = deser.run(lua, data, person_deser)
+  assert Person("Captain Falcon", 36) == person
 }
 
 pub fn custom_function_ok_test() {

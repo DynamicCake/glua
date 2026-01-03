@@ -462,11 +462,11 @@ pub fn collapse_errors(
 
 pub fn then(
   decoder: Deserializer(a),
-  next: fn(a) -> Deserializer(b),
+  next: fn(Lua, a) -> Deserializer(b),
 ) -> Deserializer(b) {
   Deserializer(function: fn(lua, dynamic_data) {
     let #(data, lua, errors) = decoder.function(lua, dynamic_data)
-    let decoder = next(data)
+    let decoder = next(lua, data)
     let #(data, lua, _) as layer = decoder.function(lua, dynamic_data)
     case errors {
       [] -> layer
