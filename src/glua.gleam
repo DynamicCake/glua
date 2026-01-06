@@ -76,7 +76,9 @@ pub fn table_list(lua: Lua, values: List(Value)) -> #(Lua, Value) {
 pub fn userdata(lua: Lua, val: anything) -> #(Lua, Value)
 
 @external(erlang, "glua_ffi", "wrap_fun")
-pub fn function(fun: fn(Lua, List(Value)) -> #(Lua, List(Value))) -> Function
+pub fn function(
+  fun: fn(Lua, List(Value)) -> Result(#(Lua, List(Value)), #(Lua, List(String))),
+) -> Function
 
 /// Downgrade a `Function` to a `Value`
 @external(erlang, "glua_ffi", "coerce")
@@ -85,6 +87,9 @@ pub fn func_to_val(func: Function) -> Value
 /// Creates a new Lua VM instance
 @external(erlang, "luerl", "init")
 pub fn new() -> Lua
+
+@external(erlang, "glua_ffi", "classify_type")
+pub fn typeof(val: Value) -> String
 
 /// List of Lua modules and functions that will be sandboxed by default
 pub const default_sandbox = [

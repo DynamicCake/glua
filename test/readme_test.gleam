@@ -147,7 +147,7 @@ pub fn expose_functions_test() {
 
       let result = float.clamp(x, min, max)
 
-      #(lua, [glua.float(result)])
+      Ok(#(lua, [glua.float(result)]))
     })
     |> glua.func_to_val
 

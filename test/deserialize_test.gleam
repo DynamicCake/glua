@@ -99,7 +99,7 @@ pub fn field_metatable_test() {
   let lua = glua.new()
   let #(lua, data) = glua.table(lua, [])
   let func =
-    glua.function(fn(lua, _args) { #(lua, [glua.string("pong")]) })
+    glua.function(fn(lua, _args) { Ok(#(lua, [glua.string("pong")])) })
     |> glua.func_to_val
   let #(lua, metatable) =
     glua.table(lua, [

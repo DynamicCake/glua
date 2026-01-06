@@ -10,6 +10,7 @@ import gleam/float
 import gleam/int
 import gleam/list
 import gleam/option.{type Option}
+import gleam/string
 import glua.{type Lua, type Value}
 
 pub opaque type Deserializer(t) {
@@ -103,6 +104,21 @@ pub fn run(
     [] -> Ok(maybe_invalid_data)
     [_, ..] -> Error(errors)
   }
+}
+
+pub fn run_list(lua: Lua, data: List(Value), deser: Deserializer(t)) {
+  let #(lua, list) = glua.table_list(lua, data)
+  run(lua, list, deser)
+}
+
+pub fn error_to_string(error: DeserializeError) {
+  "Expected "
+  <> error.expected
+  <> " got "
+  <> error.found
+  <> " at ["
+  <> error.path |> list.map(string.inspect) |> string.join(", ")
+  <> "]"
 }
 
 pub fn at(path: List(Value), inner: Deserializer(a)) -> Deserializer(a) {

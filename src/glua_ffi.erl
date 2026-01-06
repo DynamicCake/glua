@@ -5,7 +5,7 @@
 
 -export([coerce/1, coerce_nil/0, coerce_userdata/1, wrap_fun/1, sandbox_fun/2, get_table_keys/2, get_table_key/3,
          get_private/2, set_table_keys/3, load/2, load_file/2, eval/2, eval_file/2, encode_table/2, encode_userdata/2,
-         eval_chunk/2, call_function/3, classify/1, unwrap_userdata/1, get_table_transform/4, 
+         eval_chunk/2, call_function/3, classify/1, unwrap_userdata/1, get_table_transform/4,
          get_table_list_transform/4, userdata_exists/2, table_exists/2]).
 
 %% helper to convert luerl return values to a format
@@ -129,7 +129,6 @@ unwrap_userdata(_) ->
     {error, nil}.
 
 encode_table(State, Values) ->
-    % io:format("THING ~p~n, ~p~n", [State, Values]),
     {Data, St} = luerl_heap:alloc_table(Values, State),
     {St, Data}.
 
@@ -138,9 +137,16 @@ encode_userdata(State, Values) ->
     {St, Data}.
 
 wrap_fun(Fun) ->
-    NewFun = fun(Args, St) ->
-        {St1, Return} = Fun(St, Args),
-        {Return, St1}
+    NewFun = fun(Args, StateIn) ->
+        {Status, Result} = Fun(StateIn, Args),
+        case Status of
+            ok ->
+                {StateOut, Return} = Result,
+                {Return, StateOut};
+            error ->
+                {StateOut, Msgs} = Result,
+                {error, map_error(lua_error({error_call, Msgs}, StateOut))}
+        end
     end,
     #erl_func{code=NewFun}.
 

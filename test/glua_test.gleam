@@ -4,6 +4,7 @@ import gleam/dynamic/decode
 import gleam/int
 import gleam/list
 import gleam/option
+import gleam/result
 import gleeunit
 
 import glua
@@ -28,7 +29,7 @@ pub fn get_table_test() {
           my_table
             |> list.map(fn(pair) { #(glua.string(pair.0), glua.float(pair.1)) }),
         )
-      #(lua, [table])
+      Ok(#(lua, [table]))
     })
     |> glua.func_to_val
 
@@ -207,7 +208,7 @@ pub fn set_test() {
     let assert Ok(list) = deser.run(lua, list, deser.list(deser.int))
 
     let count = list.count(list, int.is_odd)
-    #(lua, list.map([count], glua.int))
+    Ok(#(lua, list.map([count], glua.int)))
   }
 
   let encoded = glua.function(count_odd) |> glua.func_to_val
@@ -231,7 +232,7 @@ pub fn set_test() {
         glua.function(fn(lua, args) {
           let assert [arg] = args
           let assert Ok(arg) = deser.run(lua, arg, deser.int)
-          #(lua, list.map([int.is_even(arg)], glua.bool))
+          Ok(#(lua, list.map([int.is_even(arg)], glua.bool)))
         })
           |> glua.func_to_val,
       ),
@@ -240,7 +241,7 @@ pub fn set_test() {
         glua.function(fn(lua, args) {
           let assert [arg] = args
           let assert Ok(arg) = deser.run(lua, arg, deser.int)
-          #(lua, list.map([int.is_odd(arg)], glua.bool))
+          Ok(#(lua, list.map([int.is_odd(arg)], glua.bool)))
         })
           |> glua.func_to_val,
       ),
@@ -439,7 +440,7 @@ pub fn nested_function_references_test() {
 pub fn alloc_test() {
   let #(lua, table) = glua.table(glua.new(), [])
   let proxy =
-    glua.function(fn(lua, _args) { #(lua, [glua.string("constant")]) })
+    glua.function(fn(lua, _args) { Ok(#(lua, [glua.string("constant")])) })
     |> glua.func_to_val
   let #(lua, metatable) = glua.table(lua, [#(glua.string("__index"), proxy)])
   let assert Ok(#(lua, _)) =
@@ -452,4 +453,34 @@ pub fn alloc_test() {
 
   assert ret1 == glua.string("constant")
   assert ret2 == glua.string("constant")
+}
+
+fn bad_arg_error(lua: glua.Lua, errors: List(deser.DeserializeError)) {
+  #(lua, errors |> list.map(deser.error_to_string))
+}
+
+pub fn throw_error_test() {
+  let add_func =
+    glua.function(fn(lua, params) {
+      let result =
+        deser.run_list(lua, params, {
+          use augend <- deser.field(glua.int(1), deser.number)
+          use addend <- deser.field(glua.int(2), deser.number)
+          deser.success(#(augend, addend))
+        })
+        |> result.map_error(bad_arg_error(lua, _))
+      use #(augend, addend) <- result.try(result)
+      Ok(#(lua, [glua.float(augend +. addend)]))
+    })
+  let lua = glua.new()
+  let assert Ok(#(lua, [result])) =
+    glua.call_function(lua, add_func, [glua.int(1), glua.int(4)])
+  let assert Ok(5.0) = deser.run(lua, result, deser.number)
+  let assert Error(glua.LuaRuntimeException(
+    exception: glua.ErrorCall(["Expected Field got Nothing at [2]"]),
+    state: _lua,
+  )) =
+    glua.call_function(lua, add_func, [
+      glua.int(1),
+    ])
 }
