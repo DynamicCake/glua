@@ -53,18 +53,18 @@ pub fn sandbox_test() {
       using: decode.int,
     )
 
-  assert exception == glua.ErrorCall(["math.max is sandboxed"])
+  assert exception == glua.ErrorCall("math.max is sandboxed", option.None)
 
   let assert Ok(lua) = glua.sandbox(glua.new(), ["string"])
 
-  let assert Error(glua.LuaRuntimeException(glua.IllegalIndex(_, name), _)) =
+  let assert Error(glua.LuaRuntimeException(glua.IllegalIndex(index, _), _)) =
     glua.eval(
       state: lua,
       code: "return string.upper('my_string')",
       using: decode.string,
     )
 
-  assert name == "upper"
+  assert index == "upper"
 
   let assert Ok(lua) = glua.sandbox(glua.new(), ["os", "execute"])
 
@@ -74,7 +74,7 @@ pub fn sandbox_test() {
       code: "os.execute(\"echo 'sandbox test is failing'\"); os.exit(1)",
     )
 
-  assert exception == glua.ErrorCall(["os.execute is sandboxed"])
+  assert exception == glua.ErrorCall("os.execute is sandboxed", option.None)
 
   let assert Ok(lua) = glua.sandbox(glua.new(), ["print"])
   let arg = glua.string("sandbox test is failing")
@@ -86,7 +86,7 @@ pub fn sandbox_test() {
       using: decode.string,
     )
 
-  assert exception == glua.ErrorCall(["print is sandboxed"])
+  assert exception == glua.ErrorCall("print is sandboxed", option.None)
 }
 
 pub fn new_sandboxed_test() {
@@ -95,18 +95,18 @@ pub fn new_sandboxed_test() {
   let assert Error(glua.LuaRuntimeException(exception, _)) =
     glua.ref_eval(state: lua, code: "return load(\"return 1\")")
 
-  assert exception == glua.ErrorCall(["load is sandboxed"])
+  assert exception == glua.ErrorCall("load is sandboxed", option.None)
 
   let arg = glua.int(1)
   let assert Error(glua.LuaRuntimeException(exception, _)) =
     glua.ref_call_function_by_name(state: lua, keys: ["os", "exit"], args: [arg])
 
-  assert exception == glua.ErrorCall(["os.exit is sandboxed"])
+  assert exception == glua.ErrorCall("os.exit is sandboxed", option.None)
 
-  let assert Error(glua.LuaRuntimeException(glua.IllegalIndex(_, name), _)) =
+  let assert Error(glua.LuaRuntimeException(glua.IllegalIndex(index, _), _)) =
     glua.ref_eval(state: lua, code: "io.write('some_message')")
 
-  assert name == "write"
+  assert index == "write"
 
   let assert Ok(lua) = glua.new_sandboxed([["package"], ["require"]])
   let assert Ok(lua) = glua.set_lua_paths(lua, paths: ["./test/lua/?.lua"])
@@ -173,10 +173,9 @@ pub fn userdata_test() {
   let userdata = Userdata("other_userdata", 2)
   let assert Ok(lua) =
     glua.set(lua, ["my_other_userdata"], glua.userdata(userdata))
-  let assert Error(glua.LuaRuntimeException(glua.IllegalIndex(value, index), _)) =
+  let assert Error(glua.LuaRuntimeException(glua.IllegalIndex(index, _), _)) =
     glua.eval(lua, "return my_other_userdata.foo", decode.string)
 
-  assert value == "{usdref,1}"
   assert index == "foo"
 }
 
@@ -211,14 +210,14 @@ pub fn get_returns_proper_errors_test() {
   let state = glua.new()
 
   assert glua.get(state:, keys: ["non_existent_global"], using: decode.string)
-    == Error(glua.KeyNotFound)
+    == Error(glua.KeyNotFound(["non_existent_global"]))
 
   let encoded = glua.int(10)
   let assert Ok(state) =
     glua.set(state:, keys: ["my_table", "some_value"], value: encoded)
 
   assert glua.get(state:, keys: ["my_table", "my_val"], using: decode.int)
-    == Error(glua.KeyNotFound)
+    == Error(glua.KeyNotFound(["my_table", "my_val"]))
 }
 
 pub fn set_test() {
@@ -341,7 +340,7 @@ pub fn get_private_test() {
 
   assert glua.new()
     |> glua.get_private("non_existent", using: decode.string)
-    == Error(glua.KeyNotFound)
+    == Error(glua.KeyNotFound(["non_existent"]))
 }
 
 pub fn delete_private_test() {
@@ -352,7 +351,7 @@ pub fn delete_private_test() {
 
   assert glua.delete_private(lua, "the_value")
     |> glua.get_private(key: "the_value", using: decode.string)
-    == Error(glua.KeyNotFound)
+    == Error(glua.KeyNotFound(["the_value"]))
 }
 
 pub fn load_test() {
@@ -371,6 +370,10 @@ pub fn eval_load_file_test() {
     glua.eval_chunk(state: lua, chunk:, using: decode.string)
 
   assert result == "LUA IS AN EMBEDDABLE LANGUAGE"
+
+  let assert Error(e) =
+    glua.load_file(state: glua.new(), path: "non_existent_file")
+  assert e == glua.FileNotFound("non_existent_file")
 }
 
 pub fn eval_test() {
@@ -392,10 +395,20 @@ pub fn eval_test() {
 pub fn eval_returns_proper_errors_test() {
   let state = glua.new()
 
-  assert glua.eval(state:, code: "if true then 1 + ", using: decode.int)
-    == Error(
-      glua.LuaCompilerException(messages: ["syntax error before: ", "1"]),
-    )
+  let assert Error(e) =
+    glua.eval(state:, code: "if true then 1 + ", using: decode.int)
+  assert e
+    == glua.LuaCompileFailure([
+      glua.LuaCompileError(1, glua.Parse, "syntax error before: 1"),
+    ])
+
+  let assert Error(e) =
+    glua.eval(state:, code: "print(\"hi)", using: decode.int)
+
+  assert e
+    == glua.LuaCompileFailure([
+      glua.LuaCompileError(1, glua.Tokenize, "syntax error near '\"'"),
+    ])
 
   assert glua.eval(state:, code: "return 'Hello from Lua!'", using: decode.int)
     == Error(
@@ -411,11 +424,23 @@ pub fn eval_returns_proper_errors_test() {
   assert index == "b"
 
   let assert Error(glua.LuaRuntimeException(
-    exception: glua.ErrorCall(messages:),
+    exception: glua.ErrorCall(message, level),
     state: _,
   )) = glua.eval(state:, code: "error('error message')", using: decode.int)
 
-  assert messages == ["error message"]
+  assert message == "error message"
+  assert level == option.None
+
+  let assert Error(glua.LuaRuntimeException(
+    exception: glua.ErrorCall(message, level),
+    state: _,
+  )) =
+    glua.eval(state:, code: "error('error with level', 1)", using: decode.int)
+
+  assert message == "error with level"
+  assert level == option.Some(1)
+
+  let assert Error(_) = glua.eval(state:, code: "error({1})", using: decode.int)
 
   let assert Error(glua.LuaRuntimeException(
     exception: glua.UndefinedFunction(value:),
@@ -423,6 +448,19 @@ pub fn eval_returns_proper_errors_test() {
   )) = glua.eval(state:, code: "local a = 5; a()", using: decode.int)
 
   assert value == "5"
+
+  let assert Error(glua.LuaRuntimeException(
+    exception: glua.UndefinedMethod(_, method:),
+    state: _,
+  )) =
+    glua.eval(
+      state:,
+      code: "local i = function(x) return x end; i:call(1)",
+      using: decode.string,
+    )
+
+  assert method == "call"
+
   let assert Error(glua.LuaRuntimeException(
     exception: glua.BadArith(operator:, args:),
     state: _,
@@ -442,6 +480,9 @@ pub fn eval_returns_proper_errors_test() {
     )
 
   assert message == "assertion failed"
+
+  let assert Error(_) =
+    glua.eval(state:, code: "assert(false, {1})", using: decode.int)
 }
 
 pub fn eval_file_test() {
@@ -550,4 +591,33 @@ pub fn nested_function_references_test() {
   let assert Ok(#(_, [result])) =
     glua.call_function(state: lua, ref:, args: [arg], using: decode.float)
   assert result == 20.0
+}
+
+pub fn format_error_test() {
+  let state = glua.new()
+
+  let assert Error(e) = glua.ref_eval(state:, code: "1 +")
+  assert glua.format_error(e)
+    == "Lua compile error: \n\nFailed to parse: error on line 1: syntax error before: 1"
+
+  let assert Error(e) = glua.ref_eval(state:, code: "assert(false)")
+  assert glua.format_error(e)
+    == "Lua runtime exception: Assertion failed with message: assertion failed\n\nLine 1: assert(false)"
+
+  let assert Error(e) =
+    glua.ref_eval(state:, code: "local a = true; local b = 1 * a")
+  assert glua.format_error(e)
+    == "Lua runtime exception: Bad arithmetic expression: 1 * true"
+
+  let assert Error(e) =
+    glua.get(state:, keys: ["non_existent"], using: decode.string)
+  assert glua.format_error(e) == "Key \"non_existent\" not found"
+
+  let assert Error(e) = glua.load_file(state:, path: "non_existent_file")
+  assert glua.format_error(e)
+    == "Lua source file \"non_existent_file\" not found"
+
+  let assert Error(e) =
+    glua.eval(state:, code: "return 1 + 1", using: decode.string)
+  assert glua.format_error(e) == "Expected String, but found Int"
 }

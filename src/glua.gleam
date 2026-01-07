@@ -4,7 +4,9 @@
 
 import gleam/dynamic
 import gleam/dynamic/decode
+import gleam/int
 import gleam/list
+import gleam/option
 import gleam/result
 import gleam/string
 
@@ -13,33 +15,209 @@ pub type Lua
 
 /// Represents the errors than can happend during the parsing and execution of Lua code
 pub type LuaError {
-  /// There was an exception when compiling the Lua code.
-  LuaCompilerException(messages: List(String))
+  /// The compilation process of the Lua code failed because of the presence of one or more compile errors.
+  LuaCompileFailure(errors: List(LuaCompileError))
   /// The Lua environment threw an exception during code execution.
   LuaRuntimeException(exception: LuaRuntimeExceptionKind, state: Lua)
   /// A certain key was not found in the Lua environment.
-  KeyNotFound
+  KeyNotFound(key: List(String))
+  /// A Lua source file was not found
+  FileNotFound(path: String)
   /// The value returned by the Lua environment could not be decoded using the provided decoder.
   UnexpectedResultType(List(decode.DecodeError))
   /// An error that could not be identified.
-  UnknownError
+  UnknownError(error: dynamic.Dynamic)
+}
+
+/// Represents a Lua compilation error
+pub type LuaCompileError {
+  LuaCompileError(line: Int, kind: LuaCompileErrorKind, message: String)
+}
+
+/// Represents the kind of a Lua compilation error
+pub type LuaCompileErrorKind {
+  Parse
+  Tokenize
 }
 
 /// Represents the kind of exceptions that can happen at runtime during Lua code execution.
 pub type LuaRuntimeExceptionKind {
   /// The exception that happens when trying to access an index that does not exists on a table (also happens when indexing non-table values).
-  IllegalIndex(value: String, index: String)
+  IllegalIndex(index: String, value: String)
   /// The exception that happens when the `error` function is called.
-  ErrorCall(messages: List(String))
+  ErrorCall(message: String, level: option.Option(Int))
   /// The exception that happens when trying to call a function that is not defined.
   UndefinedFunction(value: String)
+  /// The exception that happens when trying to call a method that is not defined for an object.
+  UndefinedMethod(object: String, method: String)
   /// The exception that happens when an invalid arithmetic operation is performed.
   BadArith(operator: String, args: List(String))
+  /// The exception that happens when a function is called with incorrect arguments.
+  Badarg(function: String, args: List(dynamic.Dynamic))
   /// The exception that happens when a call to assert is made passing a value that evalues to `false` as the first argument.
   AssertError(message: String)
   /// An exception that could not be identified
   UnknownException
 }
+
+/// Turns a `glua.LuaError` value into a human-readable string
+///
+/// ## Examples
+///
+/// ```gleam
+/// let assert Error(e) = glua.eval(
+///   state: glua.new(),
+///   code: "if true end",
+///   using: decode.string
+/// )
+///
+/// glua.format_error(e)
+/// // -> "Lua compile error: \n\nFailed to parse: error on line 1: syntax error before: 'end'"
+/// ```
+///
+/// ```gleam
+/// let assert Error(e) = glua.eval(
+///   state: glua.new(),
+///   code: "local a = 1; local b = true; return a + b",
+///   using: decode.string
+/// )
+///
+/// glua.format_error(e)
+/// // -> "Lua runtime exception: Bad arithmetic expression: 1 + true"
+/// ```
+///
+/// ```gleam
+/// let assert Error(e) = glua.get(
+///   state: glua.new(),
+///   keys: ["a_value"],
+///   using: decode.string
+/// )
+/// 
+/// glua.format_error(e)
+/// // -> "Key \"a_value\" not found"
+/// ```
+///
+/// ```gleam
+/// let assert Error(e) = glua.eval_file(
+///   state: glua.new(),
+///   path: "my_lua_file.lua",
+///   using: decode.string
+/// )
+///
+/// glua.format_error(e)
+/// // -> "Lua source file \"my_lua_file.lua\" not found"
+/// ```
+///
+/// ```gleam
+/// let assert Error(e) = glua.eval(
+///   state: glua.new(),
+///   code: "return 1 + 1",
+///   using: decode.string
+/// )
+///
+/// glua.format_error(e)
+/// // -> "Expected String, but found Int"
+/// ```
+pub fn format_error(error: LuaError) -> String {
+  case error {
+    LuaCompileFailure(errors) ->
+      "Lua compile error: "
+      <> "\n\n"
+      <> string.join(list.map(errors, format_compile_error), with: "\n")
+    LuaRuntimeException(exception, state) -> {
+      let base = "Lua runtime exception: " <> format_exception(exception)
+      let stacktrace = get_stacktrace(state)
+
+      case stacktrace {
+        "" -> base
+        stacktrace -> base <> "\n\n" <> stacktrace
+      }
+    }
+    KeyNotFound(path) ->
+      "Key " <> "\"" <> string.join(path, with: ".") <> "\"" <> " not found"
+    FileNotFound(path) ->
+      "Lua source file " <> "\"" <> path <> "\"" <> " not found"
+    UnexpectedResultType(decode_errors) ->
+      list.map(decode_errors, format_decode_error) |> string.join(with: "\n")
+    UnknownError(error) -> "Unknown error: " <> format_unknown_error(error)
+  }
+}
+
+fn format_compile_error(error: LuaCompileError) -> String {
+  let kind = case error.kind {
+    Parse -> "parse"
+    Tokenize -> "tokenize"
+  }
+
+  "Failed to "
+  <> kind
+  <> ": error on line "
+  <> int.to_string(error.line)
+  <> ": "
+  <> error.message
+}
+
+fn format_exception(exception: LuaRuntimeExceptionKind) -> String {
+  case exception {
+    IllegalIndex(index, value) ->
+      "Invalid index "
+      <> "\""
+      <> index
+      <> "\""
+      <> " at object "
+      <> "\""
+      <> value
+      <> "\""
+    ErrorCall(msg, level) -> {
+      let base = "Error call: " <> msg
+
+      case level {
+        option.Some(level) -> base <> " at level " <> int.to_string(level)
+        option.None -> base
+      }
+    }
+
+    UndefinedFunction(fun) -> "Undefined function: " <> fun
+    UndefinedMethod(obj, method) ->
+      "Undefined method "
+      <> "\""
+      <> method
+      <> "\""
+      <> " for object: "
+      <> "\""
+      <> obj
+      <> "\""
+    BadArith(operator, args) ->
+      "Bad arithmetic expression: "
+      <> string.join(args, with: " " <> operator <> " ")
+
+    Badarg(function, args) ->
+      "Bad argument "
+      <> string.join(list.map(args, format_lua_value), with: ", ")
+      <> " for function "
+      <> function
+    AssertError(msg) -> "Assertion failed with message: " <> msg
+    UnknownException -> "Unknown exception"
+  }
+}
+
+@external(erlang, "glua_ffi", "get_stacktrace")
+fn get_stacktrace(state: Lua) -> String
+
+fn format_decode_error(error: decode.DecodeError) -> String {
+  let base = "Expected " <> error.expected <> ", but found " <> error.found
+
+  case error.path {
+    [] -> base
+    path -> base <> " at " <> string.join(path, with: ".")
+  }
+}
+
+@external(erlang, "luerl_lib", "format_value")
+fn format_lua_value(v: anything) -> String
+
+@external(erlang, "luerl_lib", "format_error")
+fn format_unknown_error(error: dynamic.Dynamic) -> String
 
 /// The exception that happens when a functi
 /// Represents a chunk of Lua code that is already loaded into the Lua VM
@@ -235,7 +413,7 @@ fn sandbox_fun(msg: String) -> Value
 ///
 /// ```gleam
 /// glua.get(state: glua.new(), keys: ["non_existent"], using: decode.string)
-/// // -> Error(glua.KeyNotFound)
+/// // -> Error(glua.KeyNotFound(["non_existent"]))
 /// ```
 pub fn get(
   state lua: Lua,
@@ -332,7 +510,7 @@ pub fn set(
     case do_ref_get(lua, keys) {
       Ok(_) -> Ok(#(keys, lua))
 
-      Error(KeyNotFound) -> {
+      Error(KeyNotFound(_)) -> {
         let #(tbl, lua) = alloc_table([], lua)
         do_set(lua, keys, tbl)
         |> result.map(fn(lua) { #(keys, lua) })
@@ -428,7 +606,7 @@ fn do_set_private(key: String, value: a, lua: Lua) -> Lua
 ///
 /// assert glua.delete_private(lua, "my_value")
 ///        |> glua.get("my_value", decode.string)
-///   == Error(glua.KeyNotFound)
+///   == Error(glua.KeyNotFound(["my_value"]))
 /// ```
 pub fn delete_private(state lua: Lua, key key: String) -> Lua {
   do_delete_private(key, lua)
@@ -603,6 +781,15 @@ fn do_ref_eval_chunk(
 /// )
 ///
 /// assert results == ["hello, world!"]
+/// ```
+///
+/// ```gleam
+/// glua.eval_file(
+///   state: glua.new(),
+///   path: "path/to/non/existent/file",
+///   using: decode.string
+/// )
+/// //-> Error(glua.FileNotFound(["path/to/non/existent/file"]))
 /// ```
 pub fn eval_file(
   state lua: Lua,
