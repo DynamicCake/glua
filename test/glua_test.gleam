@@ -463,9 +463,9 @@ pub fn throw_error_test() {
   let add_func =
     glua.function(fn(lua, params) {
       let result =
-        deser.run_list(lua, params, {
-          use augend <- deser.field(glua.int(1), deser.number)
-          use addend <- deser.field(glua.int(2), deser.number)
+        deser.run_multi(lua, params, {
+          use augend <- deser.item(1, deser.number)
+          use addend <- deser.item(2, deser.number)
           deser.success(#(augend, addend))
         })
         |> result.map_error(bad_arg_error(lua, _))
@@ -474,13 +474,21 @@ pub fn throw_error_test() {
     })
   let lua = glua.new()
   let assert Ok(#(lua, [result])) =
-    glua.call_function(lua, add_func, [glua.int(1), glua.int(4)])
-  let assert Ok(5.0) = deser.run(lua, result, deser.number)
+    glua.call_function(lua, add_func, [glua.int(2), glua.int(4)])
+  let assert Ok(6.0) = deser.run(lua, result, deser.number)
   let assert Error(glua.LuaRuntimeException(
-    exception: glua.ErrorCall(["Expected Field got Nothing at [2]"]),
+    exception: glua.ErrorCall([
+      "Expected Field got Nothing at [\"<MultiVal #1>\"]",
+      "Expected Field got Nothing at [\"<MultiVal #2>\"]",
+    ]),
     state: _lua,
-  )) =
-    glua.call_function(lua, add_func, [
-      glua.int(1),
-    ])
+  )) = glua.call_function(lua, add_func, [])
+
+  let assert Error(glua.LuaRuntimeException(
+    exception: glua.ErrorCall([
+      "Expected Number got String at [\"<MultiVal #1>\"]",
+      "Expected Field got Nothing at [\"<MultiVal #2>\"]",
+    ]),
+    state: _lua,
+  )) = glua.call_function(lua, add_func, [glua.string("1")])
 }

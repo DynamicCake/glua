@@ -380,3 +380,44 @@ pub fn nonexistent_userdata_test() {
   let assert Error([DeserializeError("UserData", "NonexistentUserData", [])]) =
     deser.run(glua.new(), ref, deser.userdata)
 }
+
+pub fn arg_ok_test() {
+  let args = [glua.string("Hello"), glua.int(42)]
+  let lua = glua.new()
+  let assert Ok(#("Hello", 42)) =
+    deser.run_multi(lua, args, {
+      use hello <- deser.item(1, deser.string)
+      use num <- deser.item(2, deser.int)
+      deser.success(#(hello, num))
+    })
+  Nil
+}
+
+pub fn arg_error_test() {
+  let lua = glua.new()
+  let #(lua, table) = glua.table(lua, [])
+  let args = [table, glua.int(42)]
+
+  let assert Error([err]) =
+    deser.run_multi(lua, args, {
+      use hello <- deser.item(1, {
+        use it <- deser.field(glua.string("nest"), {
+          use it <- deser.field(glua.string("another nest"), deser.int)
+          deser.success(it)
+        })
+        deser.success(it)
+      })
+      use num <- deser.item(2, deser.int)
+      deser.success(#(hello, num))
+    })
+  assert err
+    == DeserializeError(
+      "Field",
+      "Nothing",
+      [
+        "<MultiVal #1>",
+        "nest",
+      ]
+        |> list.map(glua.string),
+    )
+}

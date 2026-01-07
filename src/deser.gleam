@@ -72,21 +72,19 @@ fn index_into(
     }
 
     [key, ..path] -> {
-      case get_table_key(lua, data, key) {
-        Ok(#(lua, data)) -> {
-          index_into(lua, path, [key, ..position], inner, data, handle_miss)
-        }
-        // NOTE: I don't feel comfortable matching on this
-        Error(glua.KeyNotFound)
-        | Error(glua.LuaRuntimeException(
-            exception: glua.IllegalIndex(_, _),
-            state: _,
-          )) -> {
-          handle_miss(lua, data, [key, ..position])
-        }
-        Error(_err) -> {
+      case classify(data) {
+        "Table" ->
+          case get_table_key(lua, data, key) {
+            Ok(#(lua, data)) -> {
+              index_into(lua, path, [key, ..position], inner, data, handle_miss)
+            }
+            Error(Nil) -> {
+              handle_miss(lua, data, [key, ..position])
+            }
+          }
+        class -> {
           let #(default, _) = inner(lua, data)
-          #(default, [DeserializeError("Table", classify(data), [])])
+          #(default, [DeserializeError("Table", class, [])])
           |> push_path(list.reverse(position))
         }
       }
@@ -106,10 +104,46 @@ pub fn run(
   }
 }
 
-pub fn run_list(lua: Lua, data: List(Value), deser: Deserializer(t)) {
-  let #(lua, list) = glua.table_list(lua, data)
+/// Puts all values in a MultiValue, a special container that is only addressable with `deser.item`
+pub fn run_multi(lua: Lua, data: List(Value), deser: Deserializer(t)) {
+  let list = new_mval(data)
   run(lua, list, deser)
 }
+
+@external(erlang, "glua_ffi", "new_mval")
+fn new_mval(values: List(Value)) -> Value
+
+pub fn item(
+  field_path: Int,
+  field_decoder: Deserializer(t),
+  next: fn(t) -> Deserializer(final),
+) -> Deserializer(final) {
+  Deserializer(fn(lua, data) {
+    let class = classify(data)
+    let pos = glua.string("<MultiVal #" <> int.to_string(field_path) <> ">")
+
+    let fail = fn(error) {
+      let #(default, _) = field_decoder.function(lua, data)
+      let #(out, errors) = next(default).function(lua, data)
+      #(out, list.append([error], errors))
+    }
+    use <- bool.lazy_guard(class != "MultiValue", fn() {
+      fail(DeserializeError("MultiValue", classify(data), [pos]))
+    })
+    case get_entry(data, field_path) {
+      Ok(val) -> {
+        let #(out, errors1) =
+          val |> field_decoder.function(lua, _) |> push_path([pos])
+        let #(out, errors2) = next(out).function(lua, data)
+        #(out, list.append(errors1, errors2))
+      }
+      Error(Nil) -> fail(DeserializeError("Field", "Nothing", [pos]))
+    }
+  })
+}
+
+@external(erlang, "glua_ffi", "get_entry")
+fn get_entry(mval: Value, idx: Int) -> Result(Value, Nil)
 
 pub fn error_to_string(error: DeserializeError) {
   "Expected "
@@ -136,7 +170,7 @@ fn get_table_key(
   lua: Lua,
   table: Value,
   key: Value,
-) -> Result(#(Lua, Value), glua.LuaError)
+) -> Result(#(Lua, Value), Nil)
 
 fn push_path(layer: Return(t), path: List(Value)) -> Return(t) {
   let errors =
@@ -167,24 +201,16 @@ pub fn optional_field(
   next: fn(t) -> Deserializer(final),
 ) -> Deserializer(final) {
   Deserializer(function: fn(lua, data) {
+    let class = classify(data)
+    use <- bool.lazy_guard(class != "Table", fn() {
+      next(default).function(lua, data)
+    })
     let #(out, errors1) =
       case get_table_key(lua, data, key) {
         Ok(#(lua, data)) -> {
           field_decoder.function(lua, data)
         }
-        // NOTE: I don't feel comfortable matching on this
-        Error(glua.KeyNotFound)
-        | Error(glua.LuaRuntimeException(
-            exception: glua.IllegalIndex(_, _),
-            state: _,
-          )) -> {
-          #(default, [])
-        }
-        Error(_err) -> {
-          #(default, [
-            DeserializeError("Table", classify(data), []),
-          ])
-        }
+        Error(Nil) -> #(default, [])
       }
       |> push_path([key])
     let #(out, errors2) = next(out).function(lua, data)
@@ -277,7 +303,13 @@ fn deser_int(lua, data: Value) -> Return(Int) {
 pub const raw: Deserializer(Value) = Deserializer(decode_raw)
 
 fn decode_raw(_lua, data: Value) -> Return(Value) {
-  #(data, [])
+  let class = classify(data)
+  case class {
+    "Unknown"
+    | // Disallow smuggling MultiValues out
+      "MultiValue" -> #(glua.nil(), [DeserializeError("Any", class, [])])
+    _ -> #(data, [])
+  }
 }
 
 pub const userdata: Deserializer(dynamic.Dynamic) = Deserializer(
