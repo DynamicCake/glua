@@ -52,7 +52,10 @@ classify(nil) ->
 classify(Bool) when is_boolean(Bool) ->
     <<"Bool">>;
 classify(Binary) when is_binary(Binary) ->
-    <<"String">>;
+    case gleam@bit_array:is_utf8(Binary) of
+        true -> <<"String">>;
+        false -> <<"ByteString">>
+    end;
 classify(N) when is_integer(N) ->
     <<"Int">>;
 classify(N) when is_float(N) ->

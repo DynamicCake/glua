@@ -3,6 +3,7 @@
 //// The main difference is that it can change the state of a lua program due to metatables.
 //// If you do not wish to keep the changed state, discard the new state.
 
+import gleam/bit_array
 import gleam/bool
 import gleam/dict.{type Dict}
 import gleam/dynamic
@@ -253,6 +254,12 @@ pub const string: Deserializer(String) = Deserializer(deser_string)
 
 fn deser_string(lua, data: Value) -> Return(String) {
   run_dynamic_function(lua, data, "String", "")
+}
+
+pub const byte_string: Deserializer(BitArray) = Deserializer(deser_byte_string)
+
+fn deser_byte_string(lua, data: Value) -> Return(BitArray) {
+  run_dynamic_function(lua, data, "ByteString", bit_array.from_string(""))
 }
 
 pub const bool: Deserializer(Bool) = Deserializer(deser_bool)

@@ -1,4 +1,5 @@
 import deser
+import gleam/bit_array
 import gleam/dict
 import gleam/dynamic/decode
 import gleam/int
@@ -491,4 +492,14 @@ pub fn throw_error_test() {
     ]),
     state: _lua,
   )) = glua.call_function(lua, add_func, [glua.string("1")])
+}
+
+pub fn non_utf8_test() {
+  let lua = glua.new()
+  let assert Ok(chars) = glua.get(lua, ["_G", "utf8", "charpattern"])
+  let assert Error([deser.DeserializeError("String", "ByteString", [])]) =
+    deser.run(lua, chars, deser.string)
+
+  let assert Ok(str) = deser.run(lua, chars, deser.byte_string)
+  assert !bit_array.is_utf8(str)
 }
