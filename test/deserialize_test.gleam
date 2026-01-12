@@ -266,6 +266,24 @@ pub fn table_list_ok_test() {
   let assert Ok([]) = deser.run(lua, data, deser.list(deser.string))
 }
 
+pub fn ipairs_ok_test() {
+  let lua = glua.new()
+  let greetings = [
+    "Hi there",
+    "Hello there",
+    "Hey!",
+    "Hi everyone",
+    "Hello all",
+    "Good morning everyone",
+  ]
+  let #(lua, data) = glua.table_list(lua, greetings |> list.map(glua.string))
+  let assert Ok(list) = deser.run(lua, data, deser.ipairs(deser.string, 100))
+  assert list == greetings
+
+  let #(lua, data) = glua.table(lua, [])
+  let assert Ok([]) = deser.run(lua, data, deser.ipairs(deser.string, 100))
+}
+
 pub fn table_list_err_test() {
   let lua = glua.new()
   let tf = fn(pair: #(Int, String)) { #(glua.int(pair.0), glua.string(pair.1)) }
@@ -295,6 +313,69 @@ pub fn table_list_err_test() {
         |> list.prepend(#(glua.string("wrench"), glua.string("in this table"))),
     )
   assert deser.run(lua, data, deser.list(deser.string)) == not_table_list
+}
+
+pub fn ipairs_edgecase_test() {
+  let lua = glua.new()
+  let tf = fn(pair: #(Int, String)) { #(glua.int(pair.0), glua.string(pair.1)) }
+
+  // Missing start
+  let #(lua, data) =
+    glua.table(lua, [#(2, "a"), #(3, "b"), #(4, "c")] |> list.map(tf))
+  assert deser.run(lua, data, deser.ipairs(deser.string, 100)) == Ok([])
+
+  // Early start
+  let #(lua, data) =
+    glua.table(lua, [#(0, "a"), #(1, "b"), #(2, "c")] |> list.map(tf))
+  assert deser.run(lua, data, deser.ipairs(deser.string, 100)) == Ok(["b", "c"])
+
+  // Gap
+  let #(lua, data) =
+    glua.table(lua, [#(1, "a"), #(2, "b"), #(4, "c")] |> list.map(tf))
+  assert deser.run(lua, data, deser.ipairs(deser.string, 100)) == Ok(["a", "b"])
+
+  // non number key
+  let #(lua, data) =
+    glua.table(
+      lua,
+      [#(1, "a"), #(2, "b"), #(3, "c")]
+        |> list.map(tf)
+        |> list.prepend(#(glua.string("wrench"), glua.string("in this table"))),
+    )
+  assert deser.run(lua, data, deser.ipairs(deser.string, 100))
+    == Ok(["a", "b", "c"])
+}
+
+pub fn ipairs_err_test() {
+  let lua = glua.new()
+  let not_table = glua.int(42)
+  let assert Error([DeserializeError("Table", "Int", [])]) =
+    deser.run(lua, not_table, deser.ipairs(deser.raw, 100))
+
+  let three_decoder = {
+    use _lua, num <- deser.then(deser.int)
+    case num {
+      3 -> deser.success(3)
+      _ -> deser.failure(3, "Three")
+    }
+  }
+  let #(lua, threes) =
+    glua.table_list(
+      lua,
+      [
+        3,
+        3,
+        3,
+        4,
+        3,
+        3,
+      ]
+        |> list.map(glua.int),
+    )
+
+  let assert Error(errs) =
+    deser.run(lua, threes, deser.ipairs(three_decoder, 100))
+  assert [DeserializeError("Three", "Int", [glua.string("items")])] == errs
 }
 
 pub fn then_test() {

@@ -406,6 +406,59 @@ fn get_table_list_transform(
   func: fn(Value, acc) -> acc,
 ) -> Result(acc, Nil)
 
+/// An ipairs style list decoder.
+/// This function consults __index
+pub fn ipairs(
+  of inner: Deserializer(a),
+  limit limit: Int,
+) -> Deserializer(List(a)) {
+  Deserializer(function: fn(lua, data) {
+    let class = classify(data)
+    case class {
+      "Table" -> {
+        use <- bool.guard(
+          !table_exists(lua, data),
+          #([], [
+            DeserializeError("Table", "NonexistentTable", []),
+          ]),
+        )
+        case ipair_inner(data, [], 1, lua, inner, limit) {
+          Ok(ok) -> #(ok, [])
+          Error(errs) -> #([], errs)
+        }
+      }
+      _ -> #([], [DeserializeError("Table", class, [])])
+    }
+  })
+}
+
+fn ipair_inner(
+  table: Value,
+  out: List(a),
+  idx: Int,
+  lua: Lua,
+  deser: Deserializer(a),
+  limit: Int,
+) -> Result(List(a), List(DeserializeError)) {
+  use <- bool.lazy_guard(idx > limit, fn() {
+    Error([DeserializeError("Table", "UnprocessableTable", [])])
+  })
+  case get_table_key(lua, table, glua.int(idx)) {
+    Ok(#(lua, val)) -> {
+      case deser.function(lua, val) {
+        #(value, []) -> {
+          ipair_inner(table, [value, ..out], idx + 1, lua, deser, limit)
+        }
+        #(_, errors) -> {
+          push_path(#([], errors), [glua.string("items")]).1
+          |> Error
+        }
+      }
+    }
+    Error(Nil) -> Ok(list.reverse(out))
+  }
+}
+
 pub fn dict(
   key: Deserializer(key),
   value: Deserializer(value),
