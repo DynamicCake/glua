@@ -1,12 +1,12 @@
 # Glua
 
-A library for embedding Lua in Gleam applications!
+A library for embedding Lua in Gleam applications powered by [Luerl](https://github.com/rvirding/luerl)!
 
 [![Package Version](https://img.shields.io/hexpm/v/glua)](https://hex.pm/packages/glua)
 [![Hex Docs](https://img.shields.io/badge/hex-docs-ffaff3)](https://hexdocs.pm/glua/)
 
 ```sh
-gleam add glua@1
+gleam add glua@2
 ```
 
 ## Usage
@@ -14,7 +14,8 @@ gleam add glua@1
 ### Executing Lua code
 
 ```gleam
-let code = "
+  let code =
+    "
 function greet()
   return 'Hello from Lua!'
 end
@@ -22,47 +23,54 @@ end
 return greet()
 "
 
-let assert Ok(#(_state, [result])) = glua.eval(
-  state: glua.new(),
-  code:,
-  using: decode.string
-)
+  // Make a fresh instance lua instance
+  let lua = glua.new()
+  let assert Ok(#(_state, [result])) = glua.eval(state: lua, code:)
 
-assert result == "Hello from Lua!"
+  assert result == glua.string("Hello from Lua!")
+```
+
+### Decoding output
+The `deser` api is similar to the `decode`
+```gleam
+pub type Project {
+  Project(name: String, language: String)
+}
+let code = "return { name = 'glua', written_in = 'gleam'}"
+let assert Ok(#(lua, [table])) = glua.eval(glua.new(), code)
+
+let deserializer = {
+  use name <- deser.field(glua.string("name"), deser.string)
+  use language <- deser.field(glua.string("written_in"), deser.string)
+  deser.success(lua, Project(name:, language:))
+}
+
+let assert Ok(#(_lua, project)) = deser.run(lua, table, deserializer)
+assert project == Project(name: "glua", language: "gleam")
 ```
 
 ### Parsing a chunk, then executing it
-
 ```gleam
 let code = "return 'this is a chunk of Lua code'"
 let assert Ok(#(state, chunk)) = glua.load(state: glua.new(), code:)
-let assert Ok(#(_state, [result])) =
-  glua.eval_chunk(state:, chunk:, using: decode.string)
+let assert Ok(#(_state, [result])) = glua.eval_chunk(state:, chunk:)
 
-assert result == "this is a chunk of Lua code"
+assert result == glua.string("this is a chunk of Lua code")
 ```
 
 ### Executing Lua files
-
 ```gleam
-let assert Ok(#(_state, [n, m])) = glua.eval_file(
-  state: glua.new(),
-  path: "./my_lua_files/two_numbers.lua"
-  using: decode.int
-)
+let assert Ok(#(_state, [n, m])) =
+  glua.eval_file(state: glua.new(), path: "./test/lua/two_numbers.lua")
 
-assert n == 1 && m == 2
+assert n == glua.int(1) && m == glua.int(2)
 ```
 
 ### Sandboxing
-
 ```gleam
 let assert Ok(lua) = glua.new() |> glua.sandbox(["os", "execute"])
-let assert Error(glua.LuaRuntimeException(exception, _)) = glua.eval(
-  state: lua,
-  code: "os.execute('rm -f important_file'); return 0",
-  using: decode.int
-)
+let assert Error(glua.LuaRuntimeException(exception, _)) =
+  glua.eval(state: lua, code: "os.execute('rm -f important_file')")
 
 // 'important_file' was not deleted
 assert exception == glua.ErrorCall(["os.execute is sandboxed"])
@@ -71,139 +79,82 @@ assert exception == glua.ErrorCall(["os.execute is sandboxed"])
 ### Getting values from Lua
 
 ```gleam
-let assert Ok(version) = glua.get(
-  state: glua.new(),
-  keys: ["_VERSION"],
-  using: decode.string
-)
+let assert Ok(version) = glua.get(state: glua.new(), keys: ["_VERSION"])
 
-assert version == "Lua 5.3"
+assert version == glua.string("Lua 5.3")
 ```
 
 ### Setting values in Lua
 
 ```gleam
 // we need to encode any value we want to pass to Lua
-let #(lua, encoded) = glua.string(glua.new(), "my_value")
-
+let lua = glua.new()
 // `keys` is the full path to where the value will be set
 // and any intermediate table will be created if it is not present
 let keys = ["my_table", "my_value"]
-let assert Ok(lua) = glua.set(state: lua, keys:, value: encoded)
+let assert Ok(lua) = glua.set(state: lua, keys:, value: glua.string("my_value"))
 
 // now we can get the value
-let assert Ok(value) = glua.get(state: lua, keys:, using: decode.string)
+let assert Ok(value) = glua.get(state: lua, keys:)
 
 // or return it from a Lua script
 let assert Ok(#(_lua, [returned])) =
-    glua.eval(
-      state: lua,
-      code: "return my_table.my_value",
-      using: decode.string,
-    )
+  glua.eval(state: lua, code: "return my_table.my_value")
 
-assert value == "my_value"
-assert returned == "my_value"
-```
-
-```gleam
-// we can also encode a list of tuples as a table to set it in Lua
-let my_table = [
-  #("my_first_value", 1.2),
-  #("my_second_value", 2.1)
-]
-
-// the function we use to encode the keys and the function we use to encode the values
-let encoders = #(glua.string, glua.float)
-
-let #(lua, encoded) = glua.new() |> glua.table(encoders, my_table)
-let assert Ok(lua) = glua.set(state: lua, keys: ["my_table"], value: encoded)
-
-// now we can get its values
-let assert Ok(#(lua, [result])) = glua.eval(
-  state: lua,
-  code: "return my_table.my_second_value",
-  using: decode.float
-)
-
-assert result == 2.1 
-
-// or we can get the whole table and decode it back to a list of tuples
-assert glua.get(
-  state: lua,
-  keys: ["my_table"],
-  using: glua.table_decoder(decode.string, decode.float)
-) == Ok([
-  #("my_first_value", 1.2),
-  #("my_second_value", 2.1)
-])
+assert value == glua.string("my_value")
+assert returned == glua.string("my_value")
 ```
 
 ### Calling Lua functions from Gleam
 
 ```gleam
-// here we use `ref_get` instead of `get` because we need a reference to the function
-// and not a decoded value
 let lua = glua.new()
-let assert Ok(fun) = glua.ref_get(
-  state: lua,
-  keys: ["math", "max"]
-)
+let assert Ok(val) = glua.get(state: lua, keys: ["math", "max"])
+let assert Ok(#(lua, fun)) = deser.run(lua, val, deser.function)
+let args = [1, 20, 7, 18] |> list.map(glua.int)
 
-// we need to encode each argument we pass to a Lua function
-// `glua.list` encodes a list of values using a single encoder function
-let #(lua, args) = glua.list(lua, glua.int, [1, 20, 7, 18])
+let assert Ok(#(lua, [result])) =
+  glua.call_function(state: lua, fun: fun, args:)
 
-let assert Ok(#(lua, [result])) = glua.call_function(
-  state: lua,
-  ref: fun,
-  args:,
-  using: decode.int
-)
+let assert Ok(#(lua, result)) = deser.run(lua, result, deser.number)
 
-assert result == 20
+assert result == 20.0
 
-// `glua.call_function_by_name` is a shorthand for `glua.ref_get` followed by `glua.call_function`
-let assert Ok(#(_lua, [result])) = glua.call_function_by_name(
-  state: lua,
-  keys: ["math", "max"],
-  args:,
-  using: decode.int
-)
+// `glua.call_function_by_name` is a shorthand for `glua.get` followed by `glua.call_function`
+let assert Ok(#(_lua, [result])) =
+  glua.call_function_by_name(state: lua, keys: ["math", "max"], args:)
 
-assert result == 20
+let assert Ok(#(_lua, result)) = deser.run(lua, result, deser.number)
+
+assert result == 20.0
 ```
 
 ### Exposing Gleam functions to Lua
 
 ```gleam
-let #(lua, fun) = {
-  use lua, args <- glua.function(glua.new())
+let lua = glua.new()
+let #(lua, fun) =
+  glua.function(lua, fn(lua, args) {
+    // Since Gleam is a statically typed language, each and every argument must be decoded
+    let assert [x, min, max] = args
+    let assert Ok(#(lua, x)) = deser.run(lua, x, deser.number)
+    let assert Ok(#(lua, min)) = deser.run(lua, min, deser.number)
+    let assert Ok(#(lua, max)) = deser.run(lua, max, deser.number)
 
-  let assert [x, min, max] = args
-  let assert Ok([x, min, max]) = list.try_map(
-    [x, min, max],
-    decode.run(_, decode.float)
-  )
+    let result = float.clamp(x, min, max)
 
-  let result = float.clamp(x, min, max)
-
-  glua.list(lua, glua.float, [result])
-}
+    #(lua, [glua.float(result)])
+  })
 
 let keys = ["my_functions", "clamp"]
 
 let assert Ok(lua) = glua.set(state: lua, keys:, value: fun)
 
-let #(lua, args) = glua.list(lua, glua.float, [2.3, 1.2, 2.1])
-let assert Ok(#(_lua, [result])) = glua.call_function_by_name(
-  state: lua,
-  keys:,
-  args:,
-  using: decode.float
-)
+let args = [2.3, 1.2, 2.1] |> list.map(glua.float)
+let assert Ok(#(_lua, [result])) =
+  glua.call_function_by_name(state: lua, keys:, args:)
 
-assert result == 2.1
+assert result == glua.float(2.1)
 ```
 
 Further documentation can be found at <https://hexdocs.pm/glua>.
