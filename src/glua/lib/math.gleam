@@ -1,5 +1,13 @@
 import glua.{type ValueRef}
 
+pub const huge = 1.7976931348623157e308
+
+pub const max_integer = 9_223_372_036_854_775_807
+
+pub const min_integer = -9_223_372_036_854_775_808
+
+pub const pi = 3.141592653589793
+
 @external(erlang, "glua_stdlib_ffi", "math_abs")
 pub fn abs() -> ValueRef
 
