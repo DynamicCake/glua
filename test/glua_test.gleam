@@ -1,4 +1,3 @@
-import deser
 import gleam/bit_array
 import gleam/dict
 import gleam/dynamic/decode
@@ -7,6 +6,7 @@ import gleam/list
 import gleam/option
 import gleam/result
 import gleeunit
+import glua/deser
 
 import glua
 

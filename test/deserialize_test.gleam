@@ -1,9 +1,9 @@
-import deser.{DeserializeError}
 import gleam/bool
 import gleam/dict
 import gleam/dynamic
 import gleam/list
 import glua
+import glua/deser.{DeserializeError}
 
 @external(erlang, "glua_ffi", "coerce")
 fn coerce_dynamic(a: anything) -> dynamic.Dynamic

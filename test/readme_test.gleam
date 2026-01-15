@@ -1,8 +1,8 @@
-import deser
 import gleam/dict
 import gleam/float
 import gleam/list
 import glua
+import glua/deser
 
 /// This file contains all the tests in the readme
 pub fn eval_test() {
