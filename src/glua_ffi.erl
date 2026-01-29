@@ -1,27 +1,20 @@
 -module(glua_ffi).
 -import(luerl_lib, [lua_error/2]).
+-import(ttdict, [fold/3]).
+-include_lib("luerl/include/luerl.hrl").
 
--export([get_stacktrace/1, coerce/1, coerce_nil/0, wrap_fun/1, sandbox_fun/1, get_table_keys/2, get_table_keys_dec/2,
-         get_private/2, set_table_keys/3, load/2, load_file/2, eval/2, eval_dec/2, eval_file/2,
-         eval_file_dec/2, eval_chunk/2, eval_chunk_dec/2, call_function/3, call_function_dec/3]).
-
-%% turn `{userdata, Data}` into `Data` to make it more easy to decode it in Gleam
-maybe_process_userdata(Lst) when is_list(Lst) ->
-    lists:map(fun maybe_process_userdata/1, Lst);
-maybe_process_userdata({userdata, Data}) ->
-    Data;
-maybe_process_userdata(Other) ->
-    Other.
+-export([get_stacktrace/1, deference/2, coerce/1, coerce_nil/0, wrap_fun/1, sandbox_fun/1, get_table_keys/2,
+         get_private/2, set_table_keys/3, load/2, load_file/2, eval/2, eval_file/2,
+         eval_chunk/2, call_function/3]).
 
 %% helper to convert luerl return values to a format
 %% that is more suitable for use in Gleam code
 to_gleam(Value) ->
     case Value of
         {ok, Result, LuaState} ->
-            Values = maybe_process_userdata(Result),
-            {ok, {LuaState, Values}};
+            {ok, {LuaState, Result}};
         {ok, _} = Result ->
-            maybe_process_userdata(Result);
+            Result;
         {lua_error, _, _} = Error ->
             {error, map_error(Error)};
         {error, _, _} = Error ->
@@ -29,6 +22,65 @@ to_gleam(Value) ->
         error ->
             {error, {unknown_error, nil}}
     end.
+
+deference_list(St, LuerlTerms) ->
+    lists:map(fun (Lt) -> deference(St, Lt) end, LuerlTerms).
+
+%% transforms Lua values to their corresponding Erlang representation
+%% this is similar to `luerl:decode/2`, but returns values that are more decode-friendly in Gleam
+deference(St, LT) ->
+    deference(LT, St, []).
+
+deference(nil, _, _) -> nil;
+deference(false, _, _) -> false;
+deference(true, _, _) -> true;
+deference(B, _, _) when is_binary(B) -> B;
+deference(N, _, _) when is_number(N) -> N;         %Integers and floats
+deference(#tref{}=T, St, In) ->
+    deference_table(T, St, In);
+deference(#usdref{}=U, St, _In) ->
+    {#userdata{d=Data},_} = luerl_heap:get_userdata(U, St),
+    Data;
+deference(#funref{}=Fun, _St, _In) ->
+    deference_fun(Fun);
+deference(#erl_func{code=Fun}, _St, _In) ->
+    Fun;                                       %Just the bare fun
+deference(#erl_mfa{m=M, f=F}, _St, _In) ->
+    deference_fun(fun(Args, St0) -> M:F(nil, Args, St0) end);
+deference(Lua, _, _) -> error({badarg,Lua}).       %Shouldn't have anything else
+
+deference_table(#tref{i=N}=T, St, In0) ->
+    case lists:member(N, In0) of
+        true ->
+            % Been here before
+            error({recursive_table, T});
+        false ->
+            % We are in this as well
+            In1 = [N | In0],
+            case luerl_heap:get_table(T, St) of
+                #table{a = Arr, d = Dict} ->
+                    Fun = fun(K, V, Acc) ->
+                        Acc#{
+                            deference(K, St, In1)
+                            => deference(V, St, In1)
+                        }
+                    end,
+                    M0 = ttdict:fold(Fun, #{}, Dict),
+                    array:sparse_foldr(Fun, M0, Arr);
+                _Undefined ->
+                    error(badarg)
+            end
+    end.
+
+deference_fun(F) when is_function(F, 2) ->
+    {luafun, fun(St0, Args) ->
+        try
+            {Ret, St1} = F(Args, St0),
+            {ok, {St1, Ret}}
+        catch
+            error:{lua_error, _, _} = Err -> {error, map_error(Err)}
+        end
+    end}.
 
 map_error({error, Errors, _}) ->
     {lua_compile_failure, lists:map(fun map_compile_error/1, Errors)};
@@ -165,8 +217,7 @@ coerce_nil() ->
 
 wrap_fun(Fun) ->
     {erl_func, fun(Args, State) ->
-            Decoded = luerl:decode_list(Args, State),
-            {NewState, Ret} = Fun(State, Decoded),
+            {NewState, Ret} = Fun(State, deference_list(State, Args)),
             {Ret, NewState}
     end}.
 
@@ -177,16 +228,6 @@ sandbox_fun(Msg) ->
 
 get_table_keys(Lua, Keys) ->
     case luerl:get_table_keys(Keys, Lua) of
-        {ok, nil, _} ->
-            {error, {key_not_found, Keys}};
-        {ok, Value, _} ->
-            {ok, Value};
-        Other ->
-            to_gleam(Other)
-    end.
-
-get_table_keys_dec(Lua, Keys) ->
-    case luerl:get_table_keys_dec(Keys, Lua) of
         {ok, nil, _} ->
             {error, {key_not_found, Keys}};
         {ok, Value, _} ->
@@ -213,35 +254,15 @@ eval(Lua, Code) ->
     to_gleam(luerl:do(
                  unicode:characters_to_list(Code), Lua)).
 
-eval_dec(Lua, Code) ->
-    to_gleam(luerl:do_dec(
-                 unicode:characters_to_list(Code), Lua)).
-
 eval_chunk(Lua, Chunk) ->
     to_gleam(luerl:call_chunk(Chunk, Lua)).
-
-eval_chunk_dec(Lua, Chunk) ->
-    call_function_dec(Lua, Chunk, []).
 
 eval_file(Lua, Path) ->
     to_gleam(luerl:dofile(
                  unicode:characters_to_list(Path), Lua)).
 
-eval_file_dec(Lua, Path) ->
-    to_gleam(luerl:dofile_dec(
-                 unicode:characters_to_list(Path), Lua)).
-
 call_function(Lua, Fun, Args) ->
     to_gleam(luerl:call(Fun, Args, Lua)).
-
-call_function_dec(Lua, Fun, Args) ->
-    case luerl:call(Fun, Args, Lua) of
-        {ok, Ret, St2} ->
-            Values = luerl:decode_list(Ret, St2),
-            {ok, {St2, Values}};
-        Other ->
-            to_gleam(Other)
-    end.
 
 get_private(Lua, Key) ->
     try
