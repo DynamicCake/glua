@@ -1,4 +1,6 @@
-//// The all the functions under `_G.bit32`
+//// The all the functions under `_G.bit32`.
+////
+//// As of Lua 5.3, the entire bit32 library is deprecated.
 
 import glua.{type Value}
 

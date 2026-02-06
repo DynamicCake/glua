@@ -39,6 +39,8 @@ pub fn load() -> Value
 pub fn load_file() -> Value
 
 /// Returns the `loadstring` function.
+///
+/// As of Lua 5.2, `loadstring` is deprecated.
 @external(erlang, "glua_stdlib_ffi", "loadstring")
 pub fn load_string() -> Value
 
@@ -95,6 +97,8 @@ pub fn to_string() -> Value
 pub fn type_() -> Value
 
 /// Returns the `unpack` function.
+///
+/// As of Lua 5.2, `unpack` was moved to `table.unpack`
 @external(erlang, "glua_stdlib_ffi", "unpack")
 pub fn unpack() -> Value
 

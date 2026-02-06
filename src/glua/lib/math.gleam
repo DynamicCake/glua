@@ -27,6 +27,8 @@ pub fn asin() -> Value
 pub fn atan() -> Value
 
 /// Returns the `math.atan2` function.
+///
+/// As of Lua 5.3, `math.atan2` is deprecated
 @external(erlang, "glua_stdlib_ffi", "math_atan2")
 pub fn atan2() -> Value
 
@@ -39,6 +41,8 @@ pub fn ceil() -> Value
 pub fn cos() -> Value
 
 /// Returns the `math.cosh` function.
+///
+/// As of Lua 5.3, `math.cosh` is deprecated
 @external(erlang, "glua_stdlib_ffi", "math_cosh")
 pub fn cosh() -> Value
 
@@ -59,10 +63,14 @@ pub fn floor() -> Value
 pub fn fmod() -> Value
 
 /// Returns the `math.frexp` function.
+///
+/// As of Lua 5.3, `math.frexp` is deprecated
 @external(erlang, "glua_stdlib_ffi", "math_frexp")
 pub fn frexp() -> Value
 
 /// Returns the `math.ldexp` function.
+///
+/// As of Lua 5.3, `math.ldexp` is deprecated
 @external(erlang, "glua_stdlib_ffi", "math_ldexp")
 pub fn ldexp() -> Value
 
@@ -87,6 +95,8 @@ pub fn min() -> Value
 pub fn modf() -> Value
 
 /// Returns the `math.pow` function.
+///
+/// As of Lua 5.3, `math.pow` is deprecated
 @external(erlang, "glua_stdlib_ffi", "math_pow")
 pub fn pow() -> Value
 
@@ -107,6 +117,8 @@ pub fn random_seed() -> Value
 pub fn sin() -> Value
 
 /// Returns the `math.sinh` function.
+///
+/// As of Lua 5.3, `math.sinh` is deprecated
 @external(erlang, "glua_stdlib_ffi", "math_sinh")
 pub fn sinh() -> Value
 
@@ -119,6 +131,8 @@ pub fn sqrt() -> Value
 pub fn tan() -> Value
 
 /// Returns the `math.tanh` function.
+///
+/// As of Lua 5.3, `math.tanh` is deprecated
 @external(erlang, "glua_stdlib_ffi", "math_tanh")
 pub fn tanh() -> Value
 
