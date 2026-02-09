@@ -216,6 +216,43 @@ fn format_lua_value(v: anything) -> String
 @external(erlang, "luerl_lib", "format_error")
 fn format_unknown_error(error: dynamic.Dynamic) -> String
 
+pub opaque type Action(return) {
+  Action(function: fn(Lua) -> Result(#(Lua, return), LuaError))
+}
+
+pub fn run(state lua: Lua, action action: Action(a)) -> Result(a, LuaError) {
+  // drop the updated state by desing
+  action.function(lua) |> result.map(pair.second)
+}
+
+pub fn then(action: Action(a), next: fn(a) -> Action(b)) -> Action(b) {
+  use state <- Action
+  use #(new, ret) <- result.try(action.function(state))
+
+  next(ret).function(new)
+}
+
+pub fn success(value: a) -> Action(a) {
+  use state <- Action
+  Ok(#(state, value))
+}
+
+pub fn map(over action: Action(a), with fun: fn(a) -> b) -> Action(b) {
+  use state <- Action
+  action.function(state)
+  |> result.map(pair.map_second(_, fun))
+}
+
+pub fn fold(over list: List(a), with fun: fn(a) -> Action(b)) -> Action(List(b)) {
+  use state <- Action
+  list.try_fold(list, #(state, []), fn(acc, e) {
+    let #(state, results) = acc
+    fun(e).function(state)
+    |> result.map(pair.map_second(_, fn(ret) { [ret, ..results] }))
+  })
+  |> result.map(pair.map_second(_, list.reverse))
+}
+
 /// The exception that happens when a functi
 /// Represents a chunk of Lua code that is already loaded into the Lua VM
 pub type Chunk
@@ -347,18 +384,27 @@ fn do_function(
 /// assert glua.deference(state:, ref: ref1, using: decode.int) == Ok(1)
 /// assert glua.deference(state:, ref: ref2, using: decode.bool) == Ok(True)
 /// ```
-pub fn deference(
-  state lua: Lua,
-  ref ref: Value,
-  using decoder: decode.Decoder(a),
-) -> Result(a, LuaError) {
-  do_deference(lua, ref)
-  |> decode.run(decoder)
-  |> result.map_error(UnexpectedResultType)
+pub fn deference(ref ref: Value, using decoder: decode.Decoder(a)) -> Action(a) {
+  use state <- Action
+  use ret <- result.map(
+    do_deference(state, ref)
+    |> decode.run(decoder)
+    |> result.map_error(UnexpectedResultType),
+  )
+
+  #(state, ret)
 }
 
 @external(erlang, "glua_ffi", "deference")
 fn do_deference(lua: Lua, ref: Value) -> dynamic.Dynamic
+
+pub fn returning(
+  over: Action(List(Value)),
+  using decoder: decode.Decoder(a),
+) -> Action(List(a)) {
+  use refs <- then(over)
+  fold(refs, deference(_, decoder))
+}
 
 /// Creates a new Lua VM instance
 @external(erlang, "luerl", "init")
@@ -414,7 +460,9 @@ fn list_substraction(a: List(a), b: List(a)) -> List(a)
 /// ```
 pub fn sandbox(state lua: Lua, keys keys: List(String)) -> Result(Lua, LuaError) {
   let msg = string.join(keys, with: ".") <> " is sandboxed"
-  set(lua, ["_G", ..keys], sandbox_fun(msg))
+
+  set(["_G", ..keys], sandbox_fun(msg)).function(lua)
+  |> result.map(pair.first)
 }
 
 @external(erlang, "glua_ffi", "sandbox_fun")
@@ -447,8 +495,14 @@ fn sandbox_fun(msg: String) -> Value
 /// glua.get(state: glua.new(), keys: ["non_existent"])
 /// // -> Error(glua.KeyNotFound(["non_existent"]))
 /// ```
+pub fn get(keys keys: List(String)) -> Action(Value) {
+  use state <- Action
+  use ret <- result.map(do_get(state, keys))
+  #(state, ret)
+}
+
 @external(erlang, "glua_ffi", "get_table_keys")
-pub fn get(state lua: Lua, keys keys: List(String)) -> Result(Value, LuaError)
+fn do_get(lua: Lua, keys: List(String)) -> Result(Value, LuaError)
 
 /// Gets a private value that is not exposed to the Lua runtime.
 ///
@@ -512,30 +566,26 @@ fn do_get_private(lua: Lua, key: String) -> Result(dynamic.Dynamic, LuaError)
 ///
 /// assert results == emails
 /// ```
-pub fn set(
-  state lua: Lua,
-  keys keys: List(String),
-  value val: Value,
-) -> Result(Lua, LuaError) {
-  let state = {
-    use acc, key <- list.try_fold(keys, #([], lua))
-    let #(keys, lua) = acc
-    let keys = list.append(keys, [key])
-    case get(lua, keys) {
-      Ok(_) -> Ok(#(keys, lua))
+pub fn set(keys keys: List(String), value val: Value) -> Action(Nil) {
+  use state <- Action
+  use #(new, keys) <- result.try(
+    list.try_fold(keys, #(state, []), fn(acc, k) {
+      let #(state, _) = acc
+      case do_get(state, list.append(keys, [k])) {
+        Ok(_) -> Ok(#(state, keys))
 
-      Error(KeyNotFound(_)) -> {
-        let #(tbl, lua) = do_table([], lua)
-        do_set(lua, keys, tbl)
-        |> result.map(fn(lua) { #(keys, lua) })
+        Error(KeyNotFound(_)) -> {
+          let #(tbl, new) = do_table([], state)
+          do_set(new, keys, tbl)
+          |> result.map(fn(pair) { #(pair.0, keys) })
+        }
+
+        Error(e) -> Error(e)
       }
+    }),
+  )
 
-      Error(e) -> Error(e)
-    }
-  }
-
-  use #(keys, lua) <- result.try(state)
-  do_set(lua, keys, val)
+  do_set(new, keys, val)
 }
 
 /// Sets a value that is not exposed to the Lua runtime and can only be accessed from Gleam.
@@ -553,12 +603,14 @@ pub fn set_private(state lua: Lua, key key: String, value value: a) -> Lua {
 
 /// Sets a group of values under a particular table in the Lua environment.
 pub fn set_api(
-  lua: Lua,
   keys: List(String),
   values: List(#(String, Value)),
-) -> Result(Lua, LuaError) {
-  use state, #(key, val) <- list.try_fold(values, lua)
-  set(state, list.append(keys, [key]), val)
+) -> Action(Nil) {
+  use _ <- then(
+    fold(values, fn(pair) { set(list.append(keys, [pair.0]), pair.1) }),
+  )
+
+  success(Nil)
 }
 
 /// Sets the paths where the Lua runtime will look when requiring other Lua files.
@@ -583,16 +635,13 @@ pub fn set_api(
 /// glua.deference(state:, ref:, using: decode.int)
 /// // -> Ok(9)
 /// ```
-pub fn set_lua_paths(
-  state lua: Lua,
-  paths paths: List(String),
-) -> Result(Lua, LuaError) {
+pub fn set_lua_paths(paths paths: List(String)) -> Action(Nil) {
   let paths = string.join(paths, with: ";") |> string
-  set(lua, ["package", "path"], paths)
+  set(["package", "path"], paths)
 }
 
 @external(erlang, "glua_ffi", "set_table_keys")
-fn do_set(lua: Lua, keys: List(String), val: a) -> Result(Lua, LuaError)
+fn do_set(lua: Lua, keys: List(String), val: a) -> Result(#(Lua, Nil), LuaError)
 
 @external(erlang, "luerl", "put_private")
 fn do_set_private(key: String, value: a, lua: Lua) -> Lua
@@ -619,20 +668,22 @@ fn do_delete_private(key: String, lua: Lua) -> Lua
 /// Parses a string of Lua code and returns it as a compiled chunk.
 ///
 /// To eval the returned chunk, use `glua.eval_chunk`.
+pub fn load(code code: String) -> Action(Chunk) {
+  Action(do_load(_, code))
+}
+
 @external(erlang, "glua_ffi", "load")
-pub fn load(
-  state lua: Lua,
-  code code: String,
-) -> Result(#(Lua, Chunk), LuaError)
+fn do_load(lua: Lua, code: String) -> Result(#(Lua, Chunk), LuaError)
 
 /// Parses a Lua source file and returns it as a compiled chunk.
 ///
 /// To eval the returned chunk, use `glua.eval_chunk`.
+pub fn load_file(path: String) -> Action(Chunk) {
+  Action(do_load_file(_, path))
+}
+
 @external(erlang, "glua_ffi", "load_file")
-pub fn load_file(
-  state lua: Lua,
-  path path: String,
-) -> Result(#(Lua, Chunk), LuaError)
+fn do_load_file(lua: Lua, path: String) -> Result(#(Lua, Chunk), LuaError)
 
 /// Evaluates a string of Lua code.
 ///
@@ -667,11 +718,12 @@ pub fn load_file(
 /// > instead of calling `glua.eval` repeatly it is recommended to first convert
 /// > the code to a chunk by passing it to `glua.load`, and then
 /// > evaluate that chunk using `glua.eval_chunk`.
+pub fn eval(code: String) -> Action(List(Value)) {
+  Action(do_eval(_, code))
+}
+
 @external(erlang, "glua_ffi", "eval")
-pub fn eval(
-  state lua: Lua,
-  code code: String,
-) -> Result(#(Lua, List(Value)), LuaError)
+fn do_eval(lua: Lua, code: String) -> Result(#(Lua, List(Value)), LuaError)
 
 /// Evaluates a compiled chunk of Lua code.
 ///
@@ -689,10 +741,14 @@ pub fn eval(
 /// glua.deference(state:, ref:, using: decode.string)
 /// // -> Ok("hello, world!")
 /// ```
+pub fn eval_chunk(chunk: Chunk) -> Action(List(Value)) {
+  Action(do_eval_chunk(_, chunk))
+}
+
 @external(erlang, "glua_ffi", "eval_chunk")
-pub fn eval_chunk(
-  state lua: Lua,
-  chunk chunk: Chunk,
+fn do_eval_chunk(
+  lua: Lua,
+  chunk: Chunk,
 ) -> Result(#(Lua, List(Value)), LuaError)
 
 /// Evaluates a Lua source file.
@@ -714,11 +770,12 @@ pub fn eval_chunk(
 /// )
 /// //-> Error(glua.FileNotFound(["path/to/non/existent/file"]))
 /// ```
+pub fn eval_file(path: String) -> Action(List(Value)) {
+  Action(do_eval_file(_, path))
+}
+
 @external(erlang, "glua_ffi", "eval_file")
-pub fn eval_file(
-  state lua: Lua,
-  path path: String,
-) -> Result(#(Lua, List(Value)), LuaError)
+fn do_eval_file(lua: Lua, path: String) -> Result(#(Lua, List(Value)), LuaError)
 
 /// Calls a Lua function by reference.
 ///
@@ -754,11 +811,15 @@ pub fn eval_file(
 /// glua.deference(state:, ref:, using: decode.int)
 /// // -> Ok(55)
 /// ```
+pub fn call_function(fun: Value, args: List(Value)) -> Action(List(Value)) {
+  Action(do_call_function(_, fun, args))
+}
+
 @external(erlang, "glua_ffi", "call_function")
-pub fn call_function(
-  state lua: Lua,
-  ref fun: Value,
-  args args: List(Value),
+fn do_call_function(
+  lua: Lua,
+  fun: Value,
+  args: List(Value),
 ) -> Result(#(Lua, List(Value)), LuaError)
 
 /// Gets a reference to the function at `keys`, then inmediatly calls it with the provided `args`.
@@ -777,10 +838,9 @@ pub fn call_function(
 /// // -> Ok(HELLO FROM GLEAM!")
 /// ```
 pub fn call_function_by_name(
-  state lua: Lua,
   keys keys: List(String),
   args args: List(Value),
-) -> Result(#(Lua, List(Value)), LuaError) {
-  use fun <- result.try(get(lua, keys))
-  call_function(lua, fun, args)
+) -> Action(List(Value)) {
+  use fun <- then(get(keys))
+  call_function(fun, args)
 }
