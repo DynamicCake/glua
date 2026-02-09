@@ -216,7 +216,6 @@ fn format_lua_value(v: anything) -> String
 @external(erlang, "luerl_lib", "format_error")
 fn format_unknown_error(error: dynamic.Dynamic) -> String
 
-/// The exception that happens when a functi
 /// Represents a chunk of Lua code that is already loaded into the Lua VM
 pub type Chunk
 
