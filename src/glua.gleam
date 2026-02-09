@@ -571,15 +571,16 @@ fn do_get_private(lua: Lua, key: String) -> Result(dynamic.Dynamic, LuaError)
 pub fn set(keys keys: List(String), value val: Value) -> Action(Nil) {
   use state <- Action
   use #(new, keys) <- result.try(
-    list.try_fold(keys, #(state, []), fn(acc, k) {
-      let #(state, _) = acc
-      case do_get(state, list.append(keys, [k])) {
+    list.try_fold(keys, #(state, []), fn(acc, key) {
+      let #(state, keys) = acc
+      let keys = list.append(keys, [key])
+      case do_get(state, keys) {
         Ok(_) -> Ok(#(state, keys))
 
         Error(KeyNotFound(_)) -> {
           let #(tbl, new) = do_table([], state)
-          do_set(new, keys, tbl)
-          |> result.map(fn(pair) { #(pair.0, keys) })
+          use new <- result.map(do_set(new, keys, tbl))
+          #(new, keys)
         }
 
         Error(e) -> Error(e)
@@ -588,6 +589,7 @@ pub fn set(keys keys: List(String), value val: Value) -> Action(Nil) {
   )
 
   do_set(new, keys, val)
+  |> result.map(fn(state) { #(state, Nil) })
 }
 
 /// Sets a value that is not exposed to the Lua runtime and can only be accessed from Gleam.
@@ -643,7 +645,7 @@ pub fn set_lua_paths(paths paths: List(String)) -> Action(Nil) {
 }
 
 @external(erlang, "glua_ffi", "set_table_keys")
-fn do_set(lua: Lua, keys: List(String), val: a) -> Result(#(Lua, Nil), LuaError)
+fn do_set(lua: Lua, keys: List(String), val: a) -> Result(Lua, LuaError)
 
 @external(erlang, "luerl", "put_private")
 fn do_set_private(key: String, value: a, lua: Lua) -> Lua
