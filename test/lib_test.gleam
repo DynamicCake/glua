@@ -132,7 +132,11 @@ pub fn lib_table_test() {
   check(table.unpack(), ["table", "unpack"])
 }
 
+@external(erlang, "glua_ffi", "coerce")
+fn to_string(bit_string: BitArray) -> glua.Value
+
 pub fn lib_utf8_test() {
+  check(utf8.charpattern |> to_string, ["utf8", "charpattern"])
   check(utf8.char(), ["utf8", "char"])
   check(utf8.codes(), ["utf8", "codes"])
   check(utf8.codepoint(), ["utf8", "codepoint"])
