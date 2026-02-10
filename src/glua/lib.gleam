@@ -2,6 +2,8 @@
 
 import glua.{type Value}
 
+pub const lua_version = "Lua 5.3"
+
 /// Returns the `assert` function.
 @external(erlang, "glua_stdlib_ffi", "assert")
 pub fn assert_() -> Value

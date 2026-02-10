@@ -17,6 +17,7 @@ fn check(val: glua.Value, path: List(String)) {
 }
 
 pub fn lib_basic_test() {
+  check(lib.lua_version |> glua.string, ["_VERSION"])
   check(lib.assert_(), ["assert"])
   check(lib.collect_garbage(), ["collectgarbage"])
   check(lib.do_file(), ["dofile"])
