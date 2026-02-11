@@ -309,9 +309,7 @@ pub fn table_decoder(
   decode.list(of: inner)
 }
 
-pub fn function(
-  f: fn(Lua, List(dynamic.Dynamic)) -> #(Lua, List(Value)),
-) -> Value {
+pub fn function(f: fn(List(Value)) -> Action(List(Value), e)) -> Value {
   do_function(f)
 }
 
@@ -373,9 +371,7 @@ pub fn userdata(lua: Lua, v: anything) -> #(Lua, Value) {
 fn do_userdata(v: anything, lua: Lua) -> #(Value, Lua)
 
 @external(erlang, "glua_ffi", "wrap_fun")
-fn do_function(
-  fun: fn(Lua, List(dynamic.Dynamic)) -> #(Lua, List(Value)),
-) -> Value
+fn do_function(fun: fn(List(Value)) -> Action(List(Value), e)) -> Value
 
 /// Converts a reference to a Lua value into type-safe Gleam data using the provided decoder.
 ///
