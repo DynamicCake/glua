@@ -288,8 +288,9 @@ pub fn int(v: Int) -> Value
 @external(erlang, "glua_ffi", "coerce")
 pub fn float(v: Float) -> Value
 
-pub fn table(lua: Lua, values: List(#(Value, Value))) -> #(Lua, Value) {
-  do_table(values, lua) |> pair.swap
+pub fn table(values: List(#(Value, Value))) -> Action(Value, e) {
+  use state <- Action
+  Ok(do_table(values, state) |> pair.swap)
 }
 
 @external(erlang, "luerl_heap", "alloc_table")
@@ -362,8 +363,9 @@ pub fn list(encoder: fn(a) -> Value, values: List(a)) -> List(Value) {
 /// let assert Error(glua.LuaRuntimeException(glua.IllegalIndex(_), _)) =
 ///   glua.eval(state:, code: "return lucy.email")
 /// ```
-pub fn userdata(lua: Lua, v: anything) -> #(Lua, Value) {
-  do_userdata(v, lua) |> pair.swap
+pub fn userdata(v: anything) -> Action(Value, e) {
+  use state <- Action
+  Ok(do_userdata(v, state) |> pair.swap)
 }
 
 @external(erlang, "luerl_heap", "alloc_userdata")
