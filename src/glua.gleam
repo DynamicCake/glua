@@ -248,6 +248,14 @@ pub fn failure(error: e) -> Action(a, e) {
   Error(CustomError(error))
 }
 
+pub fn error(message: String) -> Action(List(Value), e) {
+  call_function_by_name(["error"], [string(message)])
+}
+
+pub fn error_with_code(message: String, code: Int) -> Action(List(Value), e) {
+  call_function_by_name(["error"], [string(message), int(code)])
+}
+
 pub fn map(over action: Action(a, e), with fun: fn(a) -> b) -> Action(b, e) {
   use state <- Action
   action.function(state)
@@ -309,9 +317,11 @@ pub fn table_decoder(
   decode.list(of: inner)
 }
 
-pub fn function(f: fn(List(Value)) -> Action(List(Value), e)) -> Value {
+pub fn function(f: fn(List(Value)) -> Action(List(Value), Never)) -> Value {
   do_function(f)
 }
+
+pub opaque type Never
 
 pub fn list(encoder: fn(a) -> Value, values: List(a)) -> List(Value) {
   list.map(values, encoder)
