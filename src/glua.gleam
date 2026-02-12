@@ -413,10 +413,18 @@ pub fn dereference(
 fn do_dereference(lua: Lua, ref: Value) -> dynamic.Dynamic
 
 pub fn returning(
-  over: Action(List(Value), e),
+  action act: Action(Value, e),
+  using decoder: decode.Decoder(a),
+) -> Action(a, e) {
+  use ref <- then(act)
+  deference(ref, decoder)
+}
+
+pub fn returning_list(
+  action act: Action(List(Value), e),
   using decoder: decode.Decoder(a),
 ) -> Action(List(a), e) {
-  use refs <- then(over)
+  use refs <- then(act)
   fold(refs, dereference(_, decoder))
 }
 
