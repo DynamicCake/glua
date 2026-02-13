@@ -322,7 +322,17 @@ pub fn function(f: fn(List(Value)) -> Action(List(Value), Never)) -> Value {
   do_function(f)
 }
 
-pub opaque type Never
+// Taken from hexdocs.pm/funtil/1.1.0/funtil.html#Never
+/// This type is used to represent a value that can never happen. What does that
+/// mean exactly?
+///
+/// - A `Bool` is a type that has two values: `True` and `False`.
+/// - `Nil` is a type that has one value: `Nil`.
+/// - `Never` is a type that has zero values: it's impossible to construct!
+///
+/// This library uses this type to make `glua.failure` impossible to construct in `glua.function`s
+/// to encourage using `glua.error` instead since `glua.failure` wouldn't make sense in that case.
+pub type Never
 
 pub fn list(encoder: fn(a) -> Value, values: List(a)) -> List(Value) {
   list.map(values, encoder)
