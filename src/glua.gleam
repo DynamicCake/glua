@@ -895,3 +895,32 @@ pub fn call_function_by_name(
   use fun <- then(get(keys))
   call_function(fun, args)
 }
+
+/// If the input is `Ok`, it passes its value to a function that yields an
+/// `Action`, and returns the yielded `Action`.
+///
+/// If the input is an `Error`, the function is not called and
+/// a failing `Action` is returned with the original error.
+///
+/// This is a shorthand for writing a case with `glua.then`
+///
+/// ## Example
+/// ```gleam
+/// use return <- glua.then(glua.call_function(fun, [glua.string("Hello")]))
+/// use value <- glua.try(list.first(return))
+/// ```
+///
+/// As opposed to this
+///
+/// ```gleam
+/// use return <- glua.then(glua.call_function(fun, [glua.string("Hello")]))
+/// use value <- glua.then(case return {
+///   [first] -> first
+///   _ -> "Error getting first return value"
+/// })
+pub fn try(result: Result(a, e), next: fn(a) -> Action(b, e)) -> Action(b, e) {
+  case result {
+    Ok(ret) -> Action(next(ret).function)
+    Error(err) -> failure(err)
+  }
+}
