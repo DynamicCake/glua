@@ -226,9 +226,9 @@ pub opaque type Action(return, error) {
 pub fn run(
   state lua: Lua,
   action action: Action(return, error),
-) -> Result(return, LuaError(error)) {
+) -> Result(#(Lua, return), LuaError(error)) {
   // drop the updated state by desing
-  action.function(lua) |> result.map(pair.second)
+  action.function(lua)
 }
 
 pub fn then(action: Action(a, e), next: fn(a) -> Action(b, e)) -> Action(b, e) {
@@ -321,7 +321,17 @@ pub fn function(f: fn(List(Value)) -> Action(List(Value), Never)) -> Value {
   do_function(f)
 }
 
-pub opaque type Never
+// Taken from hexdocs.pm/funtil/1.1.0/funtil.html#Never
+/// This type is used to represent a value that can never happen. What does that
+/// mean exactly?
+///
+/// - A `Bool` is a type that has two values: `True` and `False`.
+/// - `Nil` is a type that has one value: `Nil`.
+/// - `Never` is a type that has zero values: it's impossible to construct!
+///
+/// This library uses this type to make `glua.failure` impossible to construct in `glua.function`s
+/// to encourage using `glua.error` instead since `glua.failure` wouldn't make sense in that case.
+pub type Never
 
 pub fn list(encoder: fn(a) -> Value, values: List(a)) -> List(Value) {
   list.map(values, encoder)
@@ -883,4 +893,33 @@ pub fn call_function_by_name(
 ) -> Action(List(Value), e) {
   use fun <- then(get(keys))
   call_function(fun, args)
+}
+
+/// If the input is `Ok`, it passes its value to a function that yields an
+/// `Action`, and returns the yielded `Action`.
+///
+/// If the input is an `Error`, the function is not called and
+/// a failing `Action` is returned with the original error.
+///
+/// This is a shorthand for writing a case with `glua.then`
+///
+/// ## Example
+/// ```gleam
+/// use return <- glua.then(glua.call_function(fun, [glua.string("Hello")]))
+/// use value <- glua.try(list.first(return))
+/// ```
+///
+/// As opposed to this
+///
+/// ```gleam
+/// use return <- glua.then(glua.call_function(fun, [glua.string("Hello")]))
+/// use value <- glua.then(case return {
+///   [first] -> first
+///   _ -> "Error getting first return value"
+/// })
+pub fn try(result: Result(a, e), next: fn(a) -> Action(b, e)) -> Action(b, e) {
+  case result {
+    Ok(ret) -> Action(next(ret).function)
+    Error(err) -> failure(err)
+  }
 }
