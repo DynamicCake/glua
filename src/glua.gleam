@@ -437,7 +437,7 @@ pub fn returning(
   using decoder: decode.Decoder(a),
 ) -> Action(a, e) {
   use ref <- then(act)
-  deference(ref, decoder)
+  dereference(ref, decoder)
 }
 
 pub fn returning_list(
