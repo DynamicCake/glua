@@ -226,9 +226,9 @@ pub opaque type Action(return, error) {
 pub fn run(
   state lua: Lua,
   action action: Action(return, error),
-) -> Result(return, LuaError(error)) {
+) -> Result(#(Lua, return), LuaError(error)) {
   // drop the updated state by desing
-  action.function(lua) |> result.map(pair.second)
+  action.function(lua)
 }
 
 pub fn then(action: Action(a, e), next: fn(a) -> Action(b, e)) -> Action(b, e) {
