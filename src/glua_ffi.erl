@@ -23,9 +23,6 @@ to_gleam(Value) ->
             {error, {unknown_error, nil}}
     end.
 
-dereference_list(St, LuerlTerms) ->
-    lists:map(fun (Lt) -> dereference(St, Lt) end, LuerlTerms).
-
 %% transforms Lua values to their corresponding Erlang representation
 %% this is similar to `luerl:decode/2`, but returns values that are more decode-friendly in Gleam
 dereference(St, LT) ->
