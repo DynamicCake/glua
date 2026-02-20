@@ -23,9 +23,6 @@ to_gleam(Value) ->
             {error, {unknown_error, nil}}
     end.
 
-dereference_list(St, LuerlTerms) ->
-    lists:map(fun (Lt) -> dereference(St, Lt) end, LuerlTerms).
-
 %% transforms Lua values to their corresponding Erlang representation
 %% this is similar to `luerl:decode/2`, but returns values that are more decode-friendly in Gleam
 dereference(St, LT) ->
@@ -125,6 +122,8 @@ map_error({lua_error, {assert_error, Msg} = Error, State}) ->
     end;
 map_error({lua_error, {badarg, F, Args}, State}) ->
   {lua_runtime_exception, {badarg, atom_to_binary(F), Args}, State};
+map_error({lua_error, {glua_action_error, Err}, _}) ->
+   Err;
 map_error({lua_error, _, State}) ->
     {lua_runtime_exception, unknown_exception, State};
 map_error(Error) ->
@@ -217,8 +216,12 @@ coerce_nil() ->
 
 wrap_fun(Fun) ->
     {erl_func, fun(Args, State) ->
-            {NewState, Ret} = Fun(State, dereference_list(State, Args)),
-            {Ret, NewState}
+            {action, F} = Fun(Args),
+            case F(State) of
+                {ok, {NewState, Ret}} -> {Ret, NewState};
+                {error, Err} ->
+                  {error, map_error(lua_error({glua_action_error, Err}, State))}
+            end
     end}.
 
 sandbox_fun(Msg) ->
